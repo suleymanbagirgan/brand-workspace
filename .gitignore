@@ -1,0 +1,16 @@
+.build/
+dist/
+*.xcodeproj/xcuserdata/
+.swiftpm/
+.DS_Store
+build/
+.claude/worktrees/
+
+# Kişisel BMAD ayarları (kullanıcı adı vb.) depoya girmez
+_bmad/config.user.toml
+_bmad/bmm/config.yaml
+_bmad/core/config.yaml
+
+# BMAD Method geliştirme aracı (MIT, üçüncü taraf): yerelde kurulur, depoda dağıtılmaz
+_bmad/
+.claude/skills/

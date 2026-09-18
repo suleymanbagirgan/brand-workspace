@@ -1,0 +1,359 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>%1$@, %2$d öneri onay bekliyor</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$@, %2$#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%2$d suggestion awaiting approval</string>
+			<key>other</key>
+			<string>%2$d suggestions awaiting approval</string>
+		</dict>
+	</dict>
+	<key>%1$d görev ve %2$d süre kaydı aktarıldı, %3$d marka oluşturuldu. Daha önce aktarılmış %4$d görev atlandı.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Imported %1$#@tasks@ and %2$#@entries@, created %3$#@brands@. Skipped %4$#@skipped@.</string>
+		<key>brands</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%3$d brand</string>
+			<key>other</key>
+			<string>%3$d brands</string>
+		</dict>
+		<key>entries</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%2$d time entry</string>
+			<key>other</key>
+			<string>%2$d time entries</string>
+		</dict>
+		<key>skipped</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%4$d previously imported task</string>
+			<key>other</key>
+			<string>%4$d previously imported tasks</string>
+		</dict>
+		<key>tasks</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%1$d task</string>
+			<key>other</key>
+			<string>%1$d tasks</string>
+		</dict>
+	</dict>
+	<key>%d biten görev rapora girmedi (iş kaydı yok)</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d finished task left out of the report (no work log)</string>
+			<key>other</key>
+			<string>%d finished tasks left out of the report (no work log)</string>
+		</dict>
+	</dict>
+	<key>%d bozuk olay satırı atlandı</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>Skipped %d malformed event line</string>
+			<key>other</key>
+			<string>Skipped %d malformed event lines</string>
+		</dict>
+	</dict>
+	<key>%d cümle geçerli bir maddeye dayanmadığı için eklenmedi.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d sentence was not added because it doesn't rely on a valid item.</string>
+			<key>other</key>
+			<string>%d sentences were not added because they don't rely on a valid item.</string>
+		</dict>
+	</dict>
+	<key>%d dosya</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d file</string>
+			<key>other</key>
+			<string>%d files</string>
+		</dict>
+	</dict>
+	<key>%d görev</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d task</string>
+			<key>other</key>
+			<string>%d tasks</string>
+		</dict>
+	</dict>
+	<key>%d görev bitti</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d task done</string>
+			<key>other</key>
+			<string>%d tasks done</string>
+		</dict>
+	</dict>
+	<key>%d görevde 12 saati aşan süre var (açık unutulmuş sayaç olabilir; aktarım sonrası kontrol et)</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d task has more than 12 hours logged (possibly a forgotten timer; review after import)</string>
+			<key>other</key>
+			<string>%d tasks have more than 12 hours logged (possibly a forgotten timer; review after import)</string>
+		</dict>
+	</dict>
+	<key>%d iş kaydı</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d work log</string>
+			<key>other</key>
+			<string>%d work logs</string>
+		</dict>
+	</dict>
+	<key>%d iş kaydı doğrulanmadı</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d work log not verified</string>
+			<key>other</key>
+			<string>%d work logs not verified</string>
+		</dict>
+	</dict>
+	<key>%d kaynaklı iddia</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d sourced claim</string>
+			<key>other</key>
+			<string>%d sourced claims</string>
+		</dict>
+	</dict>
+	<key>%d not</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d note</string>
+			<key>other</key>
+			<string>%d notes</string>
+		</dict>
+	</dict>
+	<key>%d sonuç</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d result</string>
+			<key>other</key>
+			<string>%d results</string>
+		</dict>
+	</dict>
+	<key>%d süre kaydı</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d time entry</string>
+			<key>other</key>
+			<string>%d time entries</string>
+		</dict>
+	</dict>
+	<key>%d terminalde çalışan oturum var; kapatılsın mı?</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@; quit anyway?</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d terminal has a running session</string>
+			<key>other</key>
+			<string>%d terminals have running sessions</string>
+		</dict>
+	</dict>
+	<key>%d tutarsız durum (status esas alınır)</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d inconsistent state (status takes precedence)</string>
+			<key>other</key>
+			<string>%d inconsistent states (status takes precedence)</string>
+		</dict>
+	</dict>
+	<key>%d öneri onay bekliyor</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d suggestion awaiting approval</string>
+			<key>other</key>
+			<string>%d suggestions awaiting approval</string>
+		</dict>
+	</dict>
+	<key>%d öneri reddedilsin mi?</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Reject %#@n@?</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d suggestion</string>
+			<key>other</key>
+			<string>%d suggestions</string>
+		</dict>
+	</dict>
+	<key>Bu sürümden sonra %d iş kaydı değişti</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d work log changed after this version</string>
+			<key>other</key>
+			<string>%d work logs changed after this version</string>
+		</dict>
+	</dict>
+</dict>
+</plist>
