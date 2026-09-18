@@ -1,7 +1,7 @@
 # Marka Çalışma Alanı — çalışma kuralları
 
 Çok markalı danışman için yerel macOS uygulaması. Swift 6 + SwiftUI + GRDB 7.11.1 + SwiftTerm 1.19.0. Xcode yok; Command Line Tools ile derlenir.
-Dil: arayüz, kod yorumları, test adları ve commit mesajları **Türkçe**. Commit doğrudan `main`'e (yerel depo, uzak yok).
+Dil: arayüz, kod yorumları, test adları ve commit mesajları **Türkçe**. Commit doğrudan `main`'e. Uzak: **herkese açık** `github.com/suleymanbagirgan/brand-workspace` (lisans yok, tüm hakları saklı).
 
 ## Komutlar
 ```sh
@@ -30,6 +30,8 @@ Bitti demeden önce: `scripts/test.sh` + `scripts/build-app.sh` + `python3 scrip
 7. **Yapmadığımızı vaat etmeyiz.** Doğrulanmayan şey README "Bilinen sınırlar"da açıkça yazılır.
 
 ## Tuzaklar
+- **Depo herkese açık.** Gerçek müşteri/marka adı, kullanıcının verisinden içerik, kişisel yol ya da e-posta koda, teste, belgeye veya commit mesajına girmez; örneklerde uydurma adlar kullanılır (Deneme Yangın, Kuzey Lojistik, Örnek Kafe Zinciri). Yerel `master` dalı ve `yerel-tam-gecmis-*` etiketi anonimleştirme öncesi geçmişi taşır: **asla push edilmez** (yerel `pre-push` kancası yalnız `main`'e izin verir).
+- BMAD Method (`_bmad/`, `.claude/skills/`) yerelde kurulu geliştirme aracıdır; depoda yoktur.
 - Sürüm tek kaynak: `Sources/MarkaCore/Version.swift`; betikler `scripts/version.sh` ile okur. README'deki sürüm satırı testle bağlı.
 - Paket yalnızca arm64 (Apple Silicon).
 - İç içe `sandbox-exec` çalışmaz (`sandbox_apply: Operation not permitted`, 2026-09-18'de ölçüldü). Codex'i dıştan saran bir seatbelt profili Codex'in kendi sandbox'ını bozar.
