@@ -25,42 +25,100 @@ struct FlowView: View {
     var body: some View {
         let _ = app.revision
         let days = FlowItem.days((try? app.store?.flow(brandId: brand.id, limit: Self.limit)) ?? [], calendar: .current)
+        let todo = (try? app.store?.todo(brandId: brand.id)) ?? []
+        let flowItems = days.flatMap(\.items)
         ListWithPanel(selection: $selection) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .firstTextBaseline, spacing: Design.Space.m) {
-                    Spacer()
-                    Button(composing ? L("Vazgeç") : L("Not ekle")) { composing.toggle() }
-                        .buttonStyle(.text)
+            PageScroll(backgroundTap: { selection = nil }) {
+                VStack(alignment: .leading, spacing: Design.Space.l) {
+                    BrandHero(brand: brand)
+                    overview(todo: todo, flow: flowItems)
+                    upcoming(todo)
+                    HStack(alignment: .center) {
+                        Text(L("Akış")).font(.system(size: 20, weight: .bold)).tracking(-0.3).accessibilityAddTraits(.isHeader)
+                        Text(L("Ne yapıldı: iş kayıtları, biten görevler, notlar ve dosyalar.")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer(minLength: Design.Space.m)
+                        Button { composing.toggle() } label: {
+                            Label(composing ? L("Vazgeç") : L("Not ekle"), systemImage: composing ? "xmark" : "square.and.pencil").labelStyle(.titleAndIcon)
+                        }
+                        .actionSecondary()
                         .keyboardShortcut(composing ? KeyboardShortcut.cancelAction : nil)
-                }
-                .padding(.horizontal, Design.Space.l).padding(.top, Design.Space.s)
-                if composing {
-                    NoteComposer(brand: brand) { composing = false }
-                        .padding(.horizontal, Design.Space.l).padding(.top, Design.Space.s)
-                }
-                if days.isEmpty {
-                    EmptyStateView(title: L("Henüz bir şey yok"),
-                                   message: L("Terminalde çalışırken Claude'dan yaptıklarını oneriler/ klasörüne yazmasını isteyebilirsin; gelenler onay için burada görünür. Dosya eklemek için buraya sürükle ya da marka klasörüne koy."))
-                        .padding(.horizontal, Design.Space.l)
-                    Spacer()
-                } else {
-                    PageScroll(backgroundTap: { selection = nil }) {
+                    }
+                    .padding(.top, Design.Space.s)
+                    if composing { NoteComposer(brand: brand) { composing = false } }
+                    if days.isEmpty {
+                        EmptyStateView(title: L("Henüz bir şey yok"),
+                                       message: L("Terminalde çalışırken Claude'dan yaptıklarını oneriler/ klasörüne yazmasını isteyebilirsin; gelenler onay için burada görünür. Dosya eklemek için buraya sürükle ya da marka klasörüne koy."),
+                                       symbol: "clock.arrow.circlepath")
+                    } else {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(days) { day in
-                                Text(Self.dayTitle(day.day)).captionStyle()
+                                Text(Self.dayTitle(day.day)).font(.system(size: 12, weight: .semibold))
                                     .padding(.top, Design.Space.m).padding(.bottom, Design.Space.xs)
                                     .accessibilityAddTraits(.isHeader)
-                                ForEach(day.items) { FlowRow(item: $0, selection: $selection) }
+                                VStack(spacing: 0) {
+                                    ForEach(Array(day.items.enumerated()), id: \.element.id) { index, item in
+                                        if index > 0 { Rectangle().fill(Design.line).frame(height: 1) }
+                                        FlowRow(item: item, selection: $selection)
+                                    }
+                                }
+                                .flatList()
                             }
                         }
-                        .padding(.horizontal, Design.Space.l).padding(.bottom, Design.Space.l)
                     }
                 }
+                .pagePadding().padding(.vertical, Design.Space.l)
             }
         }
         .overlay { if dropTargeted { RoundedRectangle(cornerRadius: Design.radius).strokeBorder(Design.accent, lineWidth: 2) } }
         .liveOnly(FileDrop(targeted: $dropTargeted) { addFiles($0) })
         .onChange(of: brand.id) { selection = nil; composing = false }
+    }
+
+    /// Dört özet kutucuğu: açık görev, bu hafta biten, müşteriden beklenen karar, doğrulanmamış iş kaydı.
+    private func overview(todo: [TodoItem], flow: [FlowItem]) -> some View {
+        let calendar = StatusService.turkishCalendar
+        let weekStart = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+        let openTasks = todo.filter { if case .task = $0.kind { true } else { false } }.count
+        let decisions = todo.filter { if case .record(.decision, _) = $0.kind { true } else { false } }.count
+        let doneThisWeek = flow.filter { if case .taskDone = $0.kind { $0.date >= weekStart } else { false } }.count
+        let drafts = flow.filter { if case .workLog(.draft) = $0.kind { true } else { false } }.count
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 12, alignment: .topLeading)], alignment: .leading, spacing: 12) {
+            TodayTile(symbol: "checklist", title: L("Açık görev"), count: openTasks) { app.brandTab = .todo }
+            TodayTile(symbol: "checkmark.circle", title: L("Bu hafta biten"), count: doneThisWeek) {}
+            TodayTile(symbol: "hourglass", title: L("Karar bekleniyor"), count: decisions, emphasize: decisions > 0) { app.brandTab = .todo }
+            TodayTile(symbol: "checkmark.seal", title: L("Doğrulanmadı"), count: drafts, emphasize: drafts > 0) {}
+        }
+    }
+
+    /// Sıradaki teslimler: tarihli ilk üç açık iş (gecikenler önce); satıra tıklayınca Görevler'de ayrıntısı açılır.
+    @ViewBuilder private func upcoming(_ todo: [TodoItem]) -> some View {
+        let dated = todo.filter { $0.dueDate != nil }.sorted { ($0.dueDate ?? "") < ($1.dueDate ?? "") }.prefix(3)
+        if !dated.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    Text(L("Sıradaki teslimler")).font(.system(size: 12, weight: .semibold))
+                }
+                .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+                VStack(spacing: 0) {
+                    ForEach(Array(dated.enumerated()), id: \.element.id) { index, item in
+                        if index > 0 { Rectangle().fill(Design.line).frame(height: 1) }
+                        Button { app.brandTab = .todo; app.panelTarget = PanelTarget(item) } label: {
+                            HStack(spacing: 12) {
+                                StatusCircle(state: item.circleState, size: 15)
+                                Text(item.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                                Spacer()
+                                Text(item.kindTitle).font(.system(size: 11)).foregroundStyle(.secondary)
+                                if let d = item.dueDate { DueLabel(day: d) }
+                            }
+                            .padding(.vertical, 12).padding(.horizontal, 14).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain).rowBackground(selected: false, radius: 0)
+                    }
+                }
+                .flatList()
+            }
+        }
     }
 
     /// Sürükle-bırak: dosya olduğu gibi saklanır.
@@ -94,27 +152,50 @@ struct FlowRow: View {
     var body: some View {
         let target = PanelTarget(item)
         let selected = selection == target
-        HStack(alignment: .firstTextBaseline, spacing: Design.Space.m) {
-            Text(item.kind.title).captionStyle().lineLimit(1).frame(width: Self.kindWidth, alignment: .leading)
-            Text(item.title).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-            if case .workLog(.draft) = item.kind {
-                Text(WorkLogStatus.draft.title).captionStyle()
+        HStack(alignment: .center, spacing: 12) {
+            let tint: AnyShapeStyle = Self.isWorkLog(item.kind) ? AnyShapeStyle(Design.accent) : AnyShapeStyle(.secondary)
+            Image(systemName: Self.symbol(item.kind)).font(.system(size: 13, weight: .semibold)).foregroundStyle(tint)
+                .frame(width: 32, height: 32).background(Circle().fill(tint.opacity(0.13)))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                Text(item.kind.title).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
-            Text(item.date, format: .dateTime.hour().minute()).captionStyle().monospacedDigit()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if case .workLog(.draft) = item.kind { Pill(text: WorkLogStatus.draft.title, tint: AnyShapeStyle(Design.accent)) }
+            Text(item.date, format: .dateTime.hour().minute()).font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
                 .frame(width: Self.timeWidth, alignment: .trailing)
         }
-        .padding(.vertical, Design.Space.s).padding(.horizontal, Design.Space.s)
-        .background(RoundedRectangle(cornerRadius: Design.radius).fill(selected ? AnyShapeStyle(Design.selection) : AnyShapeStyle(.clear)))
-        .overlay(alignment: .bottom) { Rectangle().fill(Design.line).frame(height: 1).padding(.horizontal, Design.Space.s).opacity(selected ? 0 : 1) }
-        .padding(.horizontal, -Design.Space.s)
+        .padding(.vertical, 10).padding(.horizontal, 14)
+        .rowBackground(selected: selected, radius: 0)
         .contentShape(Rectangle())
         .onTapGesture { selection = selected ? nil : target }
+        .contextMenu {
+            Button(L("Ayrıntıyı aç")) { selection = target }
+            if undoable { Button(L("Geri al"), action: undoProposal) }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(item.kind.title + " · " + item.title)
         .accessibilityValue(item.date.formatted(.dateTime.hour().minute()))
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { selection = selected ? nil : target }
         .modifier(RowAction(name: L("Geri al"), enabled: undoable, perform: undoProposal))
+    }
+
+    static func isWorkLog(_ kind: FlowItem.Kind) -> Bool { if case .workLog = kind { true } else { false } }
+
+    /// Satırın türüne göre simge.
+    static func symbol(_ kind: FlowItem.Kind) -> String {
+        switch kind {
+        case .workLog(.verified): "checkmark.seal.fill"
+        case .workLog(.draft): "seal"
+        case .workLog(.retracted): "arrow.uturn.backward.circle"
+        case .taskDone: "checkmark.circle.fill"
+        case .note: "note.text"
+        case .file: "doc.fill"
+        case .recordClosed: "flag.checkered"
+        case .proposalApplied: "sparkles"
+        }
     }
 
     /// Onaylanan öneri geri alınabilir mi (VoiceOver eylemi için; görünür yol ayrıntı panelindeki "Geri al").
@@ -199,5 +280,36 @@ struct FileDrop: ViewModifier {
             add(urls.filter(\.isFileURL))
             return true
         } isTargeted: { targeted = $0 }
+    }
+}
+
+
+/// Marka künyesi (Özet'in üstü): marka renginde yumuşak zeminli geniş kart: büyük avatar, ad, sektör ve tanım.
+struct BrandHero: View {
+    @Environment(AppModel.self) private var app
+    let brand: Brand
+
+    var body: some View {
+        let current = (try? app.store?.brand(brand.id)) ?? brand
+        let tint = BrandTintStyle(key: brand.id)
+        HStack(alignment: .center, spacing: 18) {
+            BrandAvatar(name: current.name, tintKey: brand.id, selected: true, size: 64)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Text(current.name).font(.system(size: 28, weight: .bold)).tracking(-0.6).lineLimit(1).accessibilityAddTraits(.isHeader)
+                    if !current.sector.isEmpty { Pill(text: current.sector, tint: AnyShapeStyle(tint)) }
+                }
+                Text(current.summary.isEmpty ? L("Marka tanımı henüz yok. Marka Bilgileri'nden ekleyebilirsin.") : current.summary)
+                    .font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(2).lineSpacing(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous).fill(tint.opacity(0.10))
+        )
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(tint.opacity(0.22)))
+        .accessibilityElement(children: .combine)
     }
 }

@@ -6,9 +6,9 @@ Dil: arayüz, kod yorumları, test adları ve commit mesajları **Türkçe**. Co
 ## Komutlar
 ```sh
 scripts/test.sh                      # Swift Testing (CLT rpath hilesi içerir) — `swift test` doğrudan çalışmaz
-scripts/build-app.sh                 # dist/Marka Çalışma Alanı.app (ad-hoc imza)
+scripts/build-app.sh                 # dist/Workspace AI.app (ad-hoc imza)
 python3 scripts/l10n.py check        # TR/EN çeviri kapsamı; yeni L("…") anahtarı ekleyince çalıştır
-MARKA_SNAPSHOT=<klasör> "dist/Marka Çalışma Alanı.app/Contents/MacOS/MarkaCalismaAlani"   # ekranları PNG çizer
+MARKA_SNAPSHOT=<klasör> "dist/Workspace AI.app/Contents/MacOS/MarkaCalismaAlani"   # ekranları PNG çizer
 swift run MarkaDogrula codex         # gerçek Codex App Server ile uçtan uca
 scripts/release.sh [--sign "Developer ID Application: …" --notarize <profil>]   # dist/MarkaCalismaAlani-<sürüm>.dmg
 ```
@@ -40,4 +40,4 @@ Bitti demeden önce: `scripts/test.sh` + `scripts/build-app.sh` + `python3 scrip
 - Anthropic API anahtarı aranmaz, Keychain taranmaz; kullanıcı verir.
 
 ## Sürüm planı
-Güncel plan: `docs/surum-0.2.1.md` (yalnızca arayüz sadeleştirmesi; önceki: `docs/surum-0.2.0.md`). Arayüz ölçümü: `scripts/ui-olcum.sh`. Ajan ekibi: `.claude/agents/`.
+Güncel plan: `docs/surum-0.3.0.md` (terminal merkezli yeni arayüz; önceki: `docs/surum-0.2.1.md`, `docs/surum-0.2.0.md`). Arayüz ölçümü: `scripts/ui-olcum.sh`. Ajan ekibi: `.claude/agents/`.

@@ -392,6 +392,32 @@ public final class AppDatabase: Sendable {
                 t.uniqueKey(["brandId", "sha256"])
             }
         }
+        m.registerMigration("v3_marka_profili") { db in
+            // Marka profili bölümleri (0.3.0): marka başına, bölüm başına serbest metin. Boş metin satır olarak tutulmaz.
+            try db.create(table: "brandProfile") { t in
+                t.belongsTo("brand", onDelete: .cascade).notNull()
+                t.column("section", .text).notNull()
+                t.column("body", .text).notNull()
+                t.column("updatedAt", .datetime).notNull()
+                t.primaryKey(["brandId", "section"])
+            }
+        }
+        m.registerMigration("v4_finans") { db in
+            // Ödeme planı ve çalışma bütçesi satırları (0.3.0): marka başına, elle tutulur.
+            try db.create(table: "financeEntry") { t in
+                t.primaryKey("id", .text)
+                t.belongsTo("brand", onDelete: .cascade).notNull()
+                t.column("kind", .text).notNull()
+                t.column("title", .text).notNull()
+                t.column("amountMinor", .integer)
+                t.column("date", .text)
+                t.column("status", .text)
+                t.column("note", .text).notNull().defaults(to: "")
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(index: "financeEntry_brand", on: "financeEntry", columns: ["brandId", "kind", "date"])
+        }
         return m
     }
 }

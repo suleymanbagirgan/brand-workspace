@@ -45,6 +45,12 @@ public struct ContextBuilder: Sendable {
         var s = "\n# Kapsam: yalnızca “\(brand.name)” markası\n"
         if !brand.sector.isEmpty { s += "Sektör: \(brand.sector)\n" }
         if !brand.summary.isEmpty { s += "Tanım: \(brand.summary)\n" }
+        let profile = try store.profile(brandId: brandId)
+        let filled = ProfileSection.allCases.filter { !(profile[$0] ?? "").isEmpty }
+        if !filled.isEmpty {
+            s += "\n## Marka profili (kullanıcının yazdığı; yalnızca bu bilgiye dayan, eksik olanı uydurma)\n"
+            for section in filled { s += "\n### \(section.contextTitle)\n\(profile[section] ?? "")\n" }
+        }
         let contacts = try store.contacts(brandId: brandId)
         if !contacts.isEmpty {
             s += "\n## Kişiler (iletişim bilgileri paylaşılmaz)\n"

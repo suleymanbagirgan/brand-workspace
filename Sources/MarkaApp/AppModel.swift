@@ -9,14 +9,17 @@ enum SidebarItem: Hashable {
     case brand(String)
 }
 
-/// Marka ekranının üç bölümü (çekirdekte `BrandSection`; kısayol ve kayıt eşlemesi testli).
+/// Marka ekranının bölümleri (çekirdekte `BrandSection`; kısayol ve kayıt eşlemesi testli).
 typealias BrandTab = BrandSection
 
 extension BrandSection {
     var title: String {
         switch self {
-        case .flow: L("Akış")
-        case .todo: L("Yapılacaklar")
+        case .flow: L("Özet")
+        case .todo: L("Görevler")
+        case .files: L("Dosyalar")
+        case .info: L("Marka Bilgileri")
+        case .finance: L("Finans")
         case .report: L("Rapor")
         }
     }
@@ -61,8 +64,67 @@ final class AppModel {
 
     var revision = 0
     var selection: SidebarItem? = .today
-    var brandTab: BrandTab = .flow
-    var showTerminal = false
+    var brandTab: BrandTab = .flow { didSet { preferences.set(brandTab.rawValue, forKey: "lastTab") } }
+    /// Başka bölümden "Görev ekle": Görevler açılır ve ekleme alanı odaklanır.
+    var addTaskRequested = false
+    /// Komut paleti açık (⌘K).
+    var showPalette = false
+    /// 0.3.0: terminal merkezde; varsayılan açık (⌘J gizler, oturum sürer).
+    /// Görevler listesinde tamamlananlar (Hatırlatıcılar kalıbı: varsayılan gizli; ⇧⌘H).
+    var showCompletedTasks = false { didSet { preferences.set(showCompletedTasks ? "1" : "0", forKey: "showCompletedTasks") } }
+    /// Menü çubuğu simgesi (isteğe bağlı, varsayılan kapalı; Ayarlar › Genel). Pencere kapansa da uygulama yaşar.
+    var showMenuBarExtra = false { didSet { preferences.set(showMenuBarExtra ? "1" : "0", forKey: "menuBarExtra") } }
+    /// Uygulama görünümü: "system" (Mac'in ayarı), "light", "dark". Varsayılan açık; Görünüm menüsü ve Ayarlar'dan değişir.
+    var appearance: String = "light" {
+        didSet { preferences.set(appearance, forKey: "appearance"); Self.applyAppearance(appearance) }
+    }
+    static func applyAppearance(_ value: String) {
+        switch value {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
+    }
+    /// Çalışan zamanlayıcı (varsa) ve görevi; saniyede bir `now` güncellenir (yalnız sayaç çalışırken).
+    var runningTimer: TimeEntry?
+    var runningTask: WorkTask?
+    var now = Date()
+    private var ticker: Timer?
+    /// Çentik penceresi (çentiği olan ekranda sayaç çalışırken görünür). Ayarlar › Genel'den kapatılır.
+    var showNotchTimer = true { didSet { preferences.set(showNotchTimer ? "1" : "0", forKey: "notchTimer") } }
+    /// Çentik adası bu sayaç için gizlendi (yeni sayaç başlayınca ya da menü çubuğu panelinden geri açılır).
+    var notchDismissed = false
+    var elapsed: TimeInterval { runningTimer.map { max(0, now.timeIntervalSince($0.startedAt)) } ?? 0 }
+
+    /// Veri tabanındaki çalışan sayacı yükler (uygulama kapanıp açılsa da sayaç sürer).
+    func syncTimer() {
+        let entry = try? store?.runningTimer()
+        runningTimer = entry
+        runningTask = entry.flatMap { try? store?.task($0.taskId) }
+        ticker?.invalidate(); ticker = nil
+        if entry != nil {
+            now = Date()
+            ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.now = Date() }
+            }
+        }
+    }
+
+    func startTimer(_ taskId: String) {
+        notchDismissed = false
+        _ = perform(title: L("Zamanlayıcı başlatılamadı"), context: "sayac.baslat") { try store?.startTimer(taskId: taskId) }
+        syncTimer()
+    }
+
+    func stopTimer() {
+        _ = perform(title: L("Zamanlayıcı durdurulamadı"), context: "sayac.durdur") { try store?.stopTimer() }
+        syncTimer()
+    }
+
+    /// Marka başına yapay zekâ sohbeti ve "Yapay zekâya sor" ile gelen bekleyen soru.
+    var chats: [String: ChatModel] = [:]
+    var pendingChatPrompt: String?
+    var showAssistant = true { didSet { preferences.set(showAssistant ? "1" : "0", forKey: "showAssistant") } }
     var alert: AppAlert?
     /// Açılacak ayrıntı paneli (Bugün, arama ya da rapor dayanağından `open(_:)` ile). Akış/Yapılacaklar karşılayınca sıfırlar.
     var panelTarget: PanelTarget?
@@ -104,6 +166,11 @@ final class AppModel {
     private var loadingSettings = false
     /// Terminal paneli alt yerine sağda açılır.
     var terminalOnSide: Bool { didSet { preferences.set(terminalOnSide ? "1" : "0", forKey: "terminalOnSide") } }
+    /// Terminal sütununun genişliği (sürüklenir, hatırlanır). Tasarım teslimi: 315–600, varsayılan 390.
+    var terminalWidth: CGFloat {
+        didSet { preferences.set(String(Int(terminalWidth)), forKey: "terminalWidth") }
+    }
+    static let terminalWidthRange: ClosedRange<CGFloat> = 315...600
     var hasAnthropicKey = false
     var codexStatus: String = ""
     var codexAccount: CodexAppServer.Account?
@@ -124,7 +191,19 @@ final class AppModel {
         codexModel = ""
         // Güvenlik tercihi DB'den (openWorkspace) yüklenir; buradaki değer yalnızca DB açılana kadarki varsayılandır.
         terminalIsolation = true
-        terminalOnSide = preferences.string(forKey: "terminalOnSide") == "1"
+        // 0.3.0: kayıtlı tercih yoksa terminal sağda (tasarım: üç kolon).
+        terminalOnSide = preferences.string(forKey: "terminalOnSide") != "0"
+        // Başlatma: önceki durum geri yüklenir (HIG): terminal açık/kapalı, açık bölüm.
+        showAssistant = preferences.string(forKey: "showAssistant") != "0"
+        showCompletedTasks = preferences.string(forKey: "showCompletedTasks") == "1"
+        showMenuBarExtra = preferences.string(forKey: "menuBarExtra") == "1"
+        appearance = preferences.string(forKey: "appearance") ?? "light"
+        showNotchTimer = preferences.string(forKey: "notchTimer") != "0"
+        if let t = preferences.string(forKey: "lastTab"), let tab = BrandTab(rawValue: t) { brandTab = tab }
+        // Geliştirme: `MARKA_SEKME=flow|todo|files|info|finance|report|bugun` ile açılış bölümünü seçer (ekran doğrulaması için).
+        if let t = ProcessInfo.processInfo.environment["MARKA_SEKME"], let tab = BrandTab(rawValue: t) { brandTab = tab }
+        terminalWidth = preferences.string(forKey: "terminalWidth").flatMap { Double($0) }.map { CGFloat($0) } ?? 390
+        terminalWidth = min(max(terminalWidth, Self.terminalWidthRange.lowerBound), Self.terminalWidthRange.upperBound)
         openWorkspace()
         // 0.2.1: planlı gönderim çalışmaz (plan §5). Planlar veri tabanında kalır; `DeliveryScheduler` tetiklenmez.
     }
@@ -159,11 +238,31 @@ final class AppModel {
                 try? store.setSetting(BetaMetrics.firstLaunchKey, ISO8601DateFormatter().string(from: Date()))
             }
             reloadBasics()
+            syncTimer()
             // Ekran çizimi Keychain'e hiç dokunmaz (D1).
             hasAnthropicKey = preferences.scope.kind == .snapshot ? false : Keychain.load(account: anthropicKeyAccount)?.isEmpty == false
             if brands.isEmpty && (try? store.setting("onboarded")) == nil { showOnboarding = true }
             if let last = preferences.string(forKey: "lastBrand"), brands.contains(where: { $0.id == last }) {
                 selection = .brand(last)
+            }
+            // Geliştirme (`MARKA_SEKME` verilmişse): ilk markayı aç; `bugun` ise Bugün'de kal.
+            if let t = ProcessInfo.processInfo.environment["MARKA_SEKME"], t != "bugun", let first = brands.first {
+                selection = .brand(first.id)
+                // `MARKA_PANEL=1`: bölümdeki ilk kaydın ayrıntı panelini aç (ekran doğrulaması için).
+                if ProcessInfo.processInfo.environment["MARKA_PANEL"] == "onay" { brandSheet = .approvals(first.id) }
+                // Geliştirme: `MARKA_ZAMANLAYICI=1` ilk açık görevde zamanlayıcıyı başlatır (çentik/menü çubuğu doğrulaması için).
+                if ProcessInfo.processInfo.environment["MARKA_ZAMANLAYICI"] == "1",
+                   let task = (try? store.tasks(brandId: first.id, statuses: [.todo, .inProgress]))?.first {
+                    _ = try? store.startTimer(taskId: task.id, at: Date().addingTimeInterval(-754))
+                    syncTimer()
+                }
+                if ProcessInfo.processInfo.environment["MARKA_PANEL"] == "1" {
+                    switch BrandTab(rawValue: t) {
+                    case .todo: panelTarget = (try? store.todo(brandId: first.id))?.first.map(PanelTarget.init)
+                    case .flow: panelTarget = (try? store.flow(brandId: first.id))?.first.map(PanelTarget.init)
+                    default: break
+                    }
+                }
             }
             let backup = BackupService(workspace: workspaceURL)
             let diagnostics = diagnostics

@@ -15,17 +15,22 @@ struct ApprovalBand: View {
     var body: some View {
         let count = app.approvalCount(brand.id)
         if count > 0 {
-            HStack(spacing: Design.Space.s) {
-                Text(verbatim: "\(count)").monospacedDigit().foregroundStyle(Design.accent)
-                Text(L("onay bekliyor"))
-                Spacer(minLength: Design.Space.s)
-                Button(L("İncele")) { app.brandSheet = .approvals(brand.id) }
-                    .buttonStyle(.text)
+            // v3: kutu yok; tek satırlık, marka renginde yumuşak hap (tıklanınca inceleme açılır).
+            Button { app.brandSheet = .approvals(brand.id) } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.seal.fill").font(.system(size: 13)).foregroundStyle(Design.accent)
+                    Text(LF("%d onay seni bekliyor", count)).font(.system(size: 13, weight: .medium))
+                    Spacer(minLength: 8)
+                    Text(L("İncele")).font(.system(size: 12, weight: .semibold)).foregroundStyle(Design.accent)
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(Design.accent)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 11)
+                .background(Capsule().fill(Design.accent.opacity(0.10)))
+                .contentShape(Capsule())
             }
-            .accessibilityElement(children: .combine)
-            .padding(.horizontal, Design.Space.m).padding(.vertical, Design.Space.s)
-            .background(RoundedRectangle(cornerRadius: Design.radius).fill(Design.bandBackground))
-            .overlay(RoundedRectangle(cornerRadius: Design.radius).strokeBorder(Design.line))
+            .buttonStyle(.plain)
+            .accessibilityLabel(LF("%d onay seni bekliyor", count))
+            .accessibilityHint(L("İncelemeyi açar"))
         }
     }
 }
@@ -51,32 +56,41 @@ struct ApprovalSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header.padding(Design.Space.l)
-            Divider()
+            header.padding(.horizontal, 28).padding(.top, 26).padding(.bottom, Design.Space.m)
             PageScroll {
                 VStack(alignment: .leading, spacing: Design.Space.l) {
                     if rows.isEmpty {
-                        EmptyStateView(message: L("Onay bekleyen bir şey yok."))
+                        EmptyStateView(title: L("Her şey onaylandı"), message: L("Onay bekleyen bir şey yok."), symbol: "checkmark.seal")
                     } else {
                         ForEach(ApprovalRow.Group.allCases, id: \.self) { group in
                             let indices = rows.indices.filter { rows[$0].group == group }
                             if !indices.isEmpty {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Text(group.title).captionStyle().padding(.bottom, Design.Space.xs)
-                                        .accessibilityAddTraits(.isHeader)
-                                    ForEach(indices, id: \.self) { i in ApprovalRowView(row: $rows[i], folder: folder) }
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: group.symbol).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                                        Text(group.title).font(.system(size: 12, weight: .semibold))
+                                        Text(verbatim: "\(indices.count)").font(.system(size: 11)).foregroundStyle(.secondary)
+                                    }
+                                    .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+                                    VStack(spacing: 0) {
+                                        ForEach(indices, id: \.self) { i in
+                                            if i != indices.first { Rectangle().fill(Design.line).frame(height: 1) }
+                                            ApprovalRowView(row: $rows[i], folder: folder, tintKey: brand.id)
+                                        }
+                                    }
+                                    .flatList()
                                 }
                             }
                         }
                     }
                 }
-                .padding(Design.Space.l)
+                .padding(.horizontal, 28).padding(.vertical, Design.Space.m)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
-            footer.padding(.horizontal, Design.Space.l).padding(.vertical, Design.Space.m)
+            footer.padding(.horizontal, 28).padding(.vertical, 14)
         }
-        .frame(minWidth: 620, idealWidth: 680, minHeight: 440, idealHeight: 600)
+        .frame(minWidth: 620, idealWidth: 700, minHeight: 460, idealHeight: 640)
         .confirmationDialog(LF("%d öneri reddedilsin mi?", proposalCount), isPresented: $confirmRejectAll) {
             Button(L("Tümünü reddet"), role: .destructive) { rejectAll() }
         } message: {
@@ -84,11 +98,19 @@ struct ApprovalSheet: View {
         }
     }
 
-    /// Başlık + tek görünür cümle (açıklama paragrafı ve dosya yolu yok).
+    /// Başlık: marka renginde simge rozeti, ad, tek cümle ve (varsa) bekleyen sayısı.
     private var header: some View {
-        VStack(alignment: .leading, spacing: Design.Space.xs) {
-            Text(L("Onay bekliyor")).font(Design.Font.title)
-            Text(L("Onayladıkların eklenir; Akış'tan geri alabilirsin.")).captionStyle()
+        let tint = BrandTintStyle(key: brand.id)
+        return HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "checkmark.seal.fill").font(.system(size: 20, weight: .semibold)).foregroundStyle(tint)
+                .frame(width: 48, height: 48).background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(tint.opacity(0.14)))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L("Onay bekliyor")).font(.system(size: 24, weight: .bold)).tracking(-0.5).accessibilityAddTraits(.isHeader)
+                Text(LF("%1$@ · Onayladıkların eklenir; Akış'tan geri alabilirsin.", brand.name)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            Text(verbatim: "\(rows.count)").font(.system(size: 30, weight: .semibold)).monospacedDigit().foregroundStyle(tint)
         }
     }
 
@@ -97,16 +119,20 @@ struct ApprovalSheet: View {
             Button(L("Tümünü reddet…")) { confirmRejectAll = true }
                 .buttonStyle(.text)
                 .disabled(proposalCount == 0)
+            Button(allSelected ? L("Seçimi kaldır") : L("Tümünü seç")) { for i in rows.indices { rows[i].include = !allSelected } }
+                .buttonStyle(.text).disabled(rows.isEmpty)
             Spacer()
             Button(L("Vazgeç")) { dismiss() }
-                .buttonStyle(.text).keyboardShortcut(.cancelAction)
+                .actionSecondary().keyboardShortcut(.cancelAction)
             let selected = rows.filter(\.include)
             Button(LF("Seçilenleri onayla (%d)", selected.count)) { approveSelected() }
-                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                .actionPrimary().keyboardShortcut(.defaultAction)
                 .disabled(selected.isEmpty || selected.contains { $0.editableTitle && $0.title.trimmingCharacters(in: .whitespaces).isEmpty })
                 .help(L("Seçilenler onaylanır; seçilmeyenler onay bekler."))
         }
     }
+
+    private var allSelected: Bool { !rows.isEmpty && rows.allSatisfy(\.include) }
 
     /// Yalnız seçilenler karara girer; seçilmeyenler veri tabanında (ya da klasörde) bekler. Terminal önerileri tek işlemde
     /// (`decideSuggestions`), uygulama içi öneriler ve hafıza güncellemeleri tek tek, dosyalar klasörden eklenerek.
@@ -166,6 +192,15 @@ struct ApprovalRow: Identifiable {
     /// Önerinin sonuçta görüneceği yere göre gruplar.
     enum Group: CaseIterable {
         case todo, workLogs, notes, files, knowledge
+        var symbol: String {
+            switch self {
+            case .todo: "checklist"
+            case .workLogs: "seal"
+            case .notes: "note.text"
+            case .files: "doc"
+            case .knowledge: "text.book.closed"
+            }
+        }
         var title: String {
             switch self {
             case .todo: L("Yapılacaklar")
@@ -242,27 +277,33 @@ struct ApprovalRowView: View {
     @Binding var row: ApprovalRow
     /// Marka klasörü (yeni dosyanın göreli yolu için).
     var folder: URL? = nil
+    var tintKey: String? = nil
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Design.Space.s) {
-            CheckBox(isOn: $row.include, label: displayTitle)
-            VStack(alignment: .leading, spacing: Design.Space.xs) {
+        HStack(alignment: .top, spacing: 14) {
+            CheckBox(isOn: $row.include, label: displayTitle).padding(.top, 2)
+            Image(systemName: row.group.symbol).font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(tintKey.map { AnyShapeStyle(BrandTintStyle(key: $0)) } ?? AnyShapeStyle(Design.accent))
+                .frame(width: 32, height: 32)
+                .background(Circle().fill((tintKey.map { AnyShapeStyle(BrandTintStyle(key: $0)) } ?? AnyShapeStyle(Design.accent)).opacity(0.13)))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
                 if row.editableTitle {
                     InputField(title: L("Başlık"), text: $row.title)
                 } else {
-                    Text(displayTitle).lineLimit(1).truncationMode(.middle)
+                    Text(displayTitle).font(.system(size: 13, weight: .semibold)).lineLimit(2).truncationMode(.middle)
                 }
                 ForEach(details, id: \.self) { line in
-                    Text(line).captionStyle().lineLimit(3)
+                    Text(line).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(3).fixedSize(horizontal: false, vertical: true)
                 }
                 if row.hasDueDate { OptionalDayPicker(title: L("Son tarih"), day: $row.dueDate).controlSize(.small) }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .disabled(!row.include)
             .opacity(row.include ? 1 : 0.5)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, Design.Space.s)
-        .overlay(alignment: .bottom) { Rectangle().fill(Design.line).frame(height: 1) }
+        .padding(.vertical, 14).padding(.horizontal, 16)
+        .contentShape(Rectangle())
     }
 
     var displayTitle: String {

@@ -83,6 +83,9 @@ struct GeneralSettings: View {
                 claude
                 codex
                 terminal
+                menuBar
+                timerSection
+                appearanceSection
             }
             .padding(Design.Space.l)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -92,6 +95,35 @@ struct GeneralSettings: View {
             if !isSnapshot { await app.refreshCodexStatus() }
         }
         .onDisappear { loginPoll?.cancel() }
+    }
+
+    private var timerSection: some View {
+        SettingsSection(title: L("Zamanlayıcı")) {
+            Toggle(L("Çentikte göster"), isOn: Binding(get: { app.showNotchTimer }, set: { app.showNotchTimer = $0 }))
+            Text(L("Zamanlayıcı çalışırken menü çubuğunda canlı süre görünür. Çentiği olan MacBook'ta ayrıca çentikten sarkan küçük bir ada gösterilir."))
+                .captionStyle().fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var appearanceSection: some View {
+        SettingsSection(title: L("Görünüm")) {
+            Picker(L("Görünüm modu"), selection: Binding(get: { app.appearance }, set: { app.appearance = $0 })) {
+                Text(L("Açık")).tag("light")
+                Text(L("Koyu")).tag("dark")
+                Text(L("Sistem")).tag("system")
+            }
+            .pickerStyle(.segmented).labelsHidden()
+            Text(L("“Sistem” Mac'inin açık/koyu ayarını izler. Menüden de değiştirebilirsin: Görünüm › Görünüm modu."))
+                .captionStyle().fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var menuBar: some View {
+        SettingsSection(title: L("Menü çubuğu")) {
+            Toggle(L("Menü çubuğunda göster"), isOn: Binding(get: { app.showMenuBarExtra }, set: { app.showMenuBarExtra = $0 }))
+            Text(L("Bekleyen onay sayısını uygulamayı açmadan görürsün. Açıkken pencereyi kapatsan da uygulama çalışmaya devam eder (terminal oturumları dahil)."))
+                .captionStyle().fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var claude: some View {

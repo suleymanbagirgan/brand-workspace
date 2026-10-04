@@ -27,7 +27,7 @@ enum SnapshotRunner {
             var written: [String] = []
             for screen in screens(app: app) {
                 app.showNewBrand = false
-                app.showTerminal = false
+                app.showAssistant = false
                 screen.setup()
                 for scheme in [ColorScheme.light, .dark] {
                     let file = out.appendingPathComponent("\(screen.name)-\(scheme == .light ? "acik" : "koyu").png")
@@ -73,6 +73,18 @@ enum SnapshotRunner {
                                view: { AnyView(shell { DetailView() }) }))
             list.append(Screen(name: "05-yapilacaklar-panel", setup: { app.select(brand: brand.id, tab: .todo) },
                                view: { AnyView(shell { brandPage(brand) { TodoView(brand: brand, selection: todoTarget) } }) }))
+            for entry in [("16-dosyalar", BrandTab.files), ("17-marka-bilgileri", .info), ("18-finans", .finance)] {
+                list.append(Screen(name: entry.0, setup: { app.select(brand: brand.id, tab: entry.1) }, view: { AnyView(shell { DetailView() }) }))
+            }
+            list.append(Screen(name: "14-gantt", setup: { app.select(brand: brand.id, tab: .todo) },
+                               view: { AnyView(shell { brandPage(brand) { TodoView(brand: brand, mode: .gantt) } }) }))
+            list.append(Screen(name: "14b-takvim", setup: { app.select(brand: brand.id, tab: .todo) },
+                               view: { AnyView(shell { brandPage(brand) { TodoView(brand: brand, mode: .calendar) } }) }))
+            list.append(Screen(name: "15-pano", setup: { app.select(brand: brand.id, tab: .todo) },
+                               view: { AnyView(shell { brandPage(brand) { TodoView(brand: brand, mode: .board) } }) }))
+            list.append(Screen(name: "19-terminal", size: CGSize(width: 1600, height: 1000),
+                               setup: { app.select(brand: brand.id, tab: .todo); app.showAssistant = true },
+                               view: { AnyView(shell { DetailView() }) }))
             list.append(Screen(name: "06-rapor", size: CGSize(width: 1280, height: 1100), setup: { app.select(brand: brand.id, tab: .report) },
                                view: { AnyView(shell { DetailView() }) }))
             list.append(Screen(name: "07-onay", size: CGSize(width: 680, height: 1000),
@@ -101,11 +113,12 @@ enum SnapshotRunner {
     static func brandPage<Content: View>(_ brand: Brand, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             BrandHeader(brand: brand)
-                .padding(.horizontal, Design.Space.l).padding(.top, Design.Space.l).padding(.bottom, Design.Space.m)
-            ApprovalBand(brand: brand)
-                .padding(.horizontal, Design.Space.l).padding(.bottom, Design.Space.m)
+                .padding(.horizontal, 30).padding(.vertical, Design.Space.m)
+                .overlay(alignment: .bottom) { Rectangle().fill(Design.line).frame(height: 1) }
             SectionTabs()
-                .padding(.horizontal, Design.Space.l)
+                .padding(.horizontal, 30)
+            ApprovalBand(brand: brand)
+                .padding(.horizontal, 30).padding(.top, Design.Space.m)
             content().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
@@ -147,7 +160,7 @@ enum SnapshotRunner {
         func alive(_ pid: pid_t) -> Bool { pid > 0 && kill(pid, 0) == 0 }
 
         app.terminalOnSide = false
-        await step { app.select(brand: a.id, tab: .flow); app.showTerminal = true }
+        await step { app.select(brand: a.id, tab: .flow); app.showAssistant = true }
         guard let sessionA = app.terminals.existing(a.id) else {
             window.close()
             return ["TERMINAL PROVA: ✗ A markasının oturumu başlamadı"]
@@ -162,9 +175,9 @@ enum SnapshotRunner {
 
         await step { app.terminalOnSide = true }
         check(app.terminals.existing(a.id) === sessionA && alive(pidA) && sessionA.view.window != nil, "yana alınca aynı oturum, süreç canlı (\(where_(sessionA)))")
-        await step { app.showTerminal = false }
+        await step { app.showAssistant = false }
         check(alive(pidA) && sessionA.view.window == nil, "gizleyince süreç canlı, görünüm pencereden çıktı")
-        await step { app.showTerminal = true; app.select(brand: b.id, tab: .flow) }
+        await step { app.showAssistant = true; app.select(brand: b.id, tab: .flow) }
         let sessionB = app.terminals.existing(b.id)
         check(sessionB != nil && sessionB !== sessionA && alive(pidA), "B'ye geçince B'nin kendi oturumu, A canlı")
         await step { app.selection = .today }
@@ -208,7 +221,7 @@ enum SnapshotRunner {
         app.terminals.handle(.appQuit).forEach { $0.terminate() }
         try? await Task.sleep(for: .seconds(3))
         check(pids.allSatisfy { !alive($0) } && app.terminals.quitQuestionCount == nil, "kapanışta tüm kabuklar sonlandı")
-        app.showTerminal = false
+        app.showAssistant = false
         window.orderOut(nil)
         return out
     }

@@ -83,8 +83,8 @@ flowchart LR
 ```sh
 git clone https://github.com/suleymanbagirgan/brand-workspace.git
 cd brand-workspace
-scripts/build-app.sh                  # dist/Marka Çalışma Alanı.app
-open "dist/Marka Çalışma Alanı.app"
+scripts/build-app.sh                  # dist/Workspace AI.app
+open "dist/Workspace AI.app"
 ```
 
 İlk açılışta yalnızca ilk markanın adı sorulur. Marka klasörü `~/Documents/Marka Çalışma Alanı/<marka>` altında oluşur. Terminali <kbd>⌘</kbd><kbd>J</kbd> ile aç.

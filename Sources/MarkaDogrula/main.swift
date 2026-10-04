@@ -264,7 +264,142 @@ func seedDemo(path: String) throws {
         }
         try store.approveRevision(v2.id)
     }
+    try zenginDemo(store: store)
+    try yogunDemo(store: store)
     log("örnek çalışma alanı hazır: \(path)")
+}
+
+/// Demo için ZENGİN içerik: üç markanın da bütün bölümleri dolu (profil, kişi, proje, görev, hedef, finans, dosya, bağlantı, iş kaydı,
+/// onay bekleyenler). Tamamen uydurma; gerçek veriyle ilgisi yok. Doğrulama adımlarının kullandığı `seedDemo(store:)` değişmez.
+func zenginDemo(store: Store) throws {
+    let cal = StatusService.turkishCalendar
+    let now = Date()
+    func day(_ o: Int) -> String { DayString.from(cal.date(byAdding: .day, value: o, to: now)!) }
+    func ago(_ hours: Int) -> Date { cal.date(byAdding: .hour, value: -hours, to: now)! }
+    func brand(_ name: String) throws -> Brand { try store.brands().first { $0.name == name }! }
+
+    // ---------------- Deneme Yangın ----------------
+    var a = try brand("Deneme Yangın")
+    try store.setProfileSection(brandId: a.id, .positioning, body: "Türkiye'nin sertifikalı yangın ekipmanı üreticilerinden biri; rakiplerden farkı 24 saatte servis ve 5 yıl garanti. Vaat: “Önlem, panikten ucuzdur.”")
+    try store.setProfileSection(brandId: a.id, .scope, body: "Aylık: kurumsal teklif desteği, web sitesi içerik güncellemesi, bir adet saha çekimi. Dışında: reklam bütçesi yönetimi ve fiyat politikası. Onay: genel müdür Murat Kaya.")
+    try store.setProfileSection(brandId: a.id, .competitors, body: "Yerli ve ithal üç büyük marka. Beğenilen örnekler: sade teknik dokümantasyon sunan endüstriyel markalar. Rakip adı iletişimde anılmaz.")
+    try store.setProfileSection(brandId: a.id, .success, body: "Çeyrek sonunda 3 yeni kurumsal müşteri; teklif dönüşüm oranı %25 üzeri; web sitesinden gelen teklif talebi ayda en az 10.")
+    try store.saveProject(Project(brandId: a.id, name: "Web sitesi yenileme", goal: "Ürün sayfaları ve teknik föyler", dueDate: day(20)))
+    let aPro1 = try store.projects(brandId: a.id).first { $0.name == "Web sitesi yenileme" }!
+    try store.saveProject(Project(brandId: a.id, name: "Saha çekimi", goal: "Üretim tesisi ve ürün fotoğrafları", dueDate: day(25)))
+    let aPro2 = try store.projects(brandId: a.id).first { $0.name == "Saha çekimi" }!
+    try store.saveContact(Contact(brandId: a.id, name: "Murat Kaya", role: "Genel müdür", email: "murat@example.com"))
+    try store.saveContact(Contact(brandId: a.id, name: "Elif Aksoy", role: "Pazarlama sorumlusu", email: "elif@example.com"))
+    for (title, st, pr, due, proj) in [("Ürün sayfası taslaklarını hazırla", TaskStatus.inProgress, 2, 6, aPro1.id), ("Teknik föy PDF'lerini siteye yükle", .todo, 1, 9, aPro1.id),
+        ("Çekim senaryosunu müşteriyle onayla", .waiting, 2, 12, aPro2.id), ("Tesis çekim izinlerini al", .todo, 1, 15, aPro2.id), ("Aylık raporu gözden geçir", .todo, 0, 4, nil)] as [(String, TaskStatus, Int, Int, String?)] {
+        try store.saveTask(WorkTask(brandId: a.id, projectId: proj, title: title, assignee: "Claude", priority: pr, dueDate: day(due), status: st))
+    }
+    var goal = try store.saveRecord(BrandRecord(brandId: a.id, kind: .goal, title: "Web sitesi teklif talebini ikiye katla", detail: "Ürün sayfaları ve teknik föy indirme ile ayda 10 talep.", dueDate: day(30)))
+    goal.projectId = aPro1.id; try store.saveRecord(goal)
+    try store.saveRecord(BrandRecord(brandId: a.id, kind: .milestone, title: "Yeni web sitesi yayında", dueDate: day(21)))
+    try store.saveRecord(BrandRecord(brandId: a.id, kind: .contract, title: "2026 danışmanlık sözleşmesi", status: .active))
+    try store.addTextSource(brandId: a.id, kind: .link, title: "Rakip ürün karşılaştırma sayfası", body: "", url: "https://example.com/karsilastirma")
+    let aNote = try store.addTextSource(brandId: a.id, kind: .note, title: "Fuar notları", body: "Ekim fuarında 14 görüşme yapıldı; 5'i teklif istedi.", capturedAt: cal.date(byAdding: .day, value: -4, to: now)!)
+    try store.addGeneratedOutput(brandId: a.id, fileName: "urun-sayfasi-taslagi.md", content: "# Ürün sayfası taslağı\n\nYangın dolabı: 12 kg KKT…", title: "Ürün sayfası taslağı", actor: .ai)
+    try store.addGeneratedOutput(brandId: a.id, fileName: "teklif-sablonu.md", content: "# Teklif şablonu\n\nBirim fiyat, teslim süresi, montaj.", title: "Teklif şablonu", actor: .user)
+    try store.saveFinanceEntry(FinanceEntry(brandId: a.id, kind: .budget, title: "Teknik föy tasarımı", amountMinor: 650_000, note: "Tasarımcı teklifi bekleniyor"))
+    let aLog = try store.saveWorkLog(WorkLog(brandId: a.id, title: "Fuar görüşmeleri özetlendi", requested: "Fuar sonrası takip listesi", performed: "14 görüşme sınıflandırıldı; 5 sıcak potansiyel müşteri belirlendi.", decision: "Sıcak 5 müşteriye 48 saatte teklif", occurredAt: ago(30)), inputSourceIds: [aNote.id], outputSourceIds: [])
+    try store.verifyWorkLog(aLog.id, verifiedBy: "Danışman")
+
+    // ---------------- Kuzey Lojistik ----------------
+    var k = try brand("Kuzey Lojistik")
+    k.summary = "Marmara ve Ege'de soğuk zincir taşımacılığı yapan 80 araçlı filo; e-ticaret ve gıda üreticilerine depolama ve dağıtım hizmeti verir."
+    try store.updateBrand(k)
+    try store.setProfileSection(brandId: k.id, .audience, body: "E-ticaret girişimleri, gıda üreticileri ve süpermarket zincirlerinin lojistik müdürleri. Karar kriterleri: zamanında teslim, soğuk zincir güvencesi, canlı takip.")
+    try store.setProfileSection(brandId: k.id, .positioning, body: "“Soğuk zincir hiç kopmaz.” Rakiplerden farkı: araç içi sıcaklık kaydının müşteriye canlı paylaşılması ve ilk teslimat garantisi.")
+    try store.setProfileSection(brandId: k.id, .voice, body: "Net, güven veren, teknik ama anlaşılır. Rakamlarla konuşur (“%99,2 zamanında teslim”). Abartılı vaat ve jargon yok.")
+    try store.setProfileSection(brandId: k.id, .scope, body: "Yapılan: aylık içerik planı, LinkedIn yönetimi, vaka çalışması yazımı. Yapılmayan: filo operasyonu, fiyatlandırma. Onay: operasyon direktörü.")
+    try store.setProfileSection(brandId: k.id, .competitors, body: "Üç ulusal lojistik firması ve yerel taşıyıcılar. Referans: şeffaf takip sunan uluslararası lojistik markaları.")
+    try store.setProfileSection(brandId: k.id, .constraints, body: "Müşteri adları izinsiz paylaşılmaz. Sıcaklık ve teslim oranı iddiaları kayıtlarla desteklenir. Kaza ve gecikme haberlerinde yorum yapılmaz.")
+    try store.setProfileSection(brandId: k.id, .success, body: "LinkedIn'de ayda 20 bin görüntülenme; 4 vaka çalışması yayını; çeyrekte 8 nitelikli görüşme.")
+    try store.saveProject(Project(brandId: k.id, name: "Vaka çalışmaları", goal: "Dört müşteri hikâyesi", dueDate: day(18)))
+    let kPro1 = try store.projects(brandId: k.id).first { $0.name == "Vaka çalışmaları" }!
+    try store.saveProject(Project(brandId: k.id, name: "LinkedIn içerik planı", goal: "Haftada iki gönderi", dueDate: day(28)))
+    let kPro2 = try store.projects(brandId: k.id).first { $0.name == "LinkedIn içerik planı" }!
+    try store.saveContact(Contact(brandId: k.id, name: "Kerem Yıldız", role: "Operasyon direktörü", email: "kerem@example.com"))
+    try store.saveContact(Contact(brandId: k.id, name: "Seda Polat", role: "Satış müdürü", email: "seda@example.com"))
+    for (title, st, pr, due, proj) in [("İlk vaka çalışması röportajı", TaskStatus.inProgress, 3, 3, kPro1.id), ("Vaka çalışması 2: soğuk zincir", .todo, 2, 10, kPro1.id),
+        ("Ekim gönderi takvimini onaylat", .waiting, 2, 5, kPro2.id), ("LinkedIn banner tasarımı", .todo, 1, 8, kPro2.id), ("Aylık rapor taslağı", .todo, 1, 7, nil), ("Canlı takip tanıtım metni", .todo, 2, 14, kPro2.id)] as [(String, TaskStatus, Int, Int, String?)] {
+        try store.saveTask(WorkTask(brandId: k.id, projectId: proj, title: title, assignee: "Claude", priority: pr, dueDate: day(due), status: st))
+    }
+    var kGoal = try store.saveRecord(BrandRecord(brandId: k.id, kind: .goal, title: "Çeyrekte 8 nitelikli görüşme", detail: "LinkedIn ve vaka çalışmalarından gelen talepler.", dueDate: day(60)))
+    kGoal.projectId = kPro1.id; try store.saveRecord(kGoal)
+    try store.saveRecord(BrandRecord(brandId: k.id, kind: .decision, title: "Vaka çalışması müşteri onayı", dueDate: day(6)))
+    try store.saveRecord(BrandRecord(brandId: k.id, kind: .promise, title: "Haftalık içerik takvimi cuma günü", dueDate: day(3)))
+    try store.saveRecord(BrandRecord(brandId: k.id, kind: .proposal, title: "Q4 içerik paketi teklifi", status: .sent))
+    try store.saveRecord(BrandRecord(brandId: k.id, kind: .contract, title: "Aylık danışmanlık sözleşmesi", status: .active))
+    try store.saveRecord(BrandRecord(brandId: k.id, kind: .milestone, title: "İlk vaka çalışması yayını", dueDate: day(12)))
+    let kMeet = try store.addTextSource(brandId: k.id, kind: .meeting, title: "Operasyon direktörü toplantısı", body: "Kerem Yıldız: soğuk zincir verisi vaka çalışmasında kullanılabilir; müşteri adı için izin gerek.", capturedAt: cal.date(byAdding: .day, value: -3, to: now)!)
+    try store.addTextSource(brandId: k.id, kind: .link, title: "Sektör raporu 2026", body: "", url: "https://example.com/sektor-raporu")
+    try store.addTextSource(brandId: k.id, kind: .note, title: "Sosyal medya fikirleri", body: "Sürücü portreleri, sabah rotası, sıcaklık grafiği paylaşımı.", capturedAt: cal.date(byAdding: .day, value: -6, to: now)!)
+    try store.addGeneratedOutput(brandId: k.id, fileName: "linkedin-takvimi.md", content: "# LinkedIn takvimi\n\nSalı: vaka\nPerşembe: sektör notu", title: "LinkedIn takvimi", actor: .ai)
+    try store.addGeneratedOutput(brandId: k.id, fileName: "vaka-iskeleti.md", content: "# Vaka iskeleti\n\nSorun, çözüm, sonuç.", title: "Vaka çalışması iskeleti", actor: .user)
+    for (title, amt, date, st) in [("Eylül danışmanlık hizmeti", 3_200_000 as Int64, "2026-09-10", PaymentStatus.collected), ("Ekim danışmanlık hizmeti", 3_200_000, "2026-10-10", .pending), ("Kasım danışmanlık hizmeti", 3_200_000, "2026-11-10", .planned)] {
+        try store.saveFinanceEntry(FinanceEntry(brandId: k.id, kind: .payment, title: title, amountMinor: amt, date: date, status: st))
+    }
+    try store.saveFinanceEntry(FinanceEntry(brandId: k.id, kind: .budget, title: "Video çekimi (vaka)", amountMinor: 900_000, note: "Prodüksiyon teklifi onaylandı"))
+    try store.saveFinanceEntry(FinanceEntry(brandId: k.id, kind: .budget, title: "LinkedIn reklam denemesi", amountMinor: 500_000))
+    let kLog1 = try store.saveWorkLog(WorkLog(brandId: k.id, title: "Operasyon verisi derlendi", requested: "Vaka çalışması için sayılar", performed: "Son 6 ayın zamanında teslim oranı (%99,2) ve sıcaklık sapma kayıtları derlendi.", decision: "Rakamlar vaka çalışmasının başına", occurredAt: ago(26)), inputSourceIds: [kMeet.id], outputSourceIds: [])
+    try store.verifyWorkLog(kLog1.id, verifiedBy: "Danışman")
+    try store.saveWorkLog(WorkLog(brandId: k.id, title: "Ekim gönderi taslakları yazıldı", performed: "8 gönderi taslağı hazırlandı.", occurredAt: ago(4)), inputSourceIds: [], outputSourceIds: [])
+    try store.ingestSuggestionFile(brandId: k.id, fileName: "2026-10-02-oneri.json", sha256: "demo-kuzey", drafts: [
+        SuggestionDraft(kind: .createTask, summary: "Yeni görev: Sürücü portre serisi", payload: ProposalPayload.CreateTask(title: "Sürücü portre serisi", notes: "Üç sürücüyle kısa röportaj.", priority: 2)),
+        SuggestionDraft(kind: .createWorkLog, summary: "İş kaydı: LinkedIn analitiği incelendi", payload: ProposalPayload.CreateWorkLog(title: "LinkedIn analitiği incelendi", requested: "Gönderi performansı", performed: "Son 30 günün gönderileri karşılaştırıldı; vaka içerikleri öne çıktı.")),
+    ])
+
+    // ---------------- Örnek Kafe Zinciri ----------------
+    var o = try brand("Örnek Kafe Zinciri")
+    o.summary = "12 şubeli, İstanbul merkezli üçüncü dalga kafe zinciri; kendi kavurduğu çekirdek kahve ve günlük taze pastalarla tanınır."
+    try store.updateBrand(o)
+    try store.setProfileSection(brandId: o.id, .audience, body: "25–40 yaş şehirli profesyoneller ve öğrenciler; kaliteli kahveye ve rahat çalışma ortamına değer verenler. Hafta içi sabah ve öğle yoğun.")
+    try store.setProfileSection(brandId: o.id, .positioning, body: "“Sabahın en iyi kararı.” Kendi kavurduğu çekirdek, her gün taze pasta ve çalışmaya uygun sakin şubeler.")
+    try store.setProfileSection(brandId: o.id, .voice, body: "Sıcak, samimi, hafif esprili. Hitap: sen. Emoji ölçülü; kahve terimleri anlaşılır tutulur.")
+    try store.setProfileSection(brandId: o.id, .scope, body: "Yapılan: Instagram içerik üretimi, menü lansman kampanyaları, şube açılış duyuruları. Yapılmayan: fiyat/indirim kararları, şube operasyonu. Onay: marka müdürü.")
+    try store.setProfileSection(brandId: o.id, .competitors, body: "Ulusal zincirler ve butik kavurucular. Referans: yerel çekirdek hikâyesini güçlü anlatan bağımsız kafeler.")
+    try store.setProfileSection(brandId: o.id, .constraints, body: "Sağlık iddiası (“sağlıklı kahve” vb.) kullanılmaz. Çocuk fotoğrafı için yazılı izin gerekir. İndirim duyuruları marka müdürü onayı olmadan çıkmaz.")
+    try store.setProfileSection(brandId: o.id, .success, body: "Instagram'da ayda %10 takipçi artışı; sonbahar menüsü lansmanında şube başı günlük +%8 satış; yeni şube açılışında ilk hafta 500 ziyaretçi.")
+    try store.saveProject(Project(brandId: o.id, name: "Sonbahar menüsü lansmanı", goal: "Yeni mevsimlik içecekler", dueDate: day(10)))
+    let oPro1 = try store.projects(brandId: o.id).first { $0.name == "Sonbahar menüsü lansmanı" }!
+    try store.saveProject(Project(brandId: o.id, name: "13. şube açılışı", goal: "Kadıköy şubesi duyurusu", dueDate: day(35)))
+    let oPro2 = try store.projects(brandId: o.id).first { $0.name == "13. şube açılışı" }!
+    try store.saveContact(Contact(brandId: o.id, name: "Deniz Çelik", role: "Marka müdürü", email: "deniz@example.com"))
+    try store.saveContact(Contact(brandId: o.id, name: "Baran Tunç", role: "Baş barista", email: "baran@example.com"))
+    for (title, st, pr, due, proj) in [("Menü fotoğraf çekimi", TaskStatus.inProgress, 3, 2, oPro1.id), ("Lansman reels'i kurgusu", .todo, 2, 5, oPro1.id), ("Şube posterleri onayı", .waiting, 2, 4, oPro1.id),
+        ("Kadıköy açılış duyuru metni", .todo, 1, 20, oPro2.id), ("Açılış davetiyesi tasarımı", .todo, 1, 24, oPro2.id), ("Aylık içerik raporu", .todo, 1, 8, nil)] as [(String, TaskStatus, Int, Int, String?)] {
+        try store.saveTask(WorkTask(brandId: o.id, projectId: proj, title: title, assignee: "Claude", priority: pr, dueDate: day(due), status: st))
+    }
+    var oGoal = try store.saveRecord(BrandRecord(brandId: o.id, kind: .goal, title: "Sonbahar menüsü ilk haftada satış artışı", detail: "Yeni içeceklerin şube başı günlük satışa katkısı.", dueDate: day(14)))
+    oGoal.projectId = oPro1.id; try store.saveRecord(oGoal)
+    try store.saveRecord(BrandRecord(brandId: o.id, kind: .decision, title: "Lansman indirimi var mı?", dueDate: day(3)))
+    try store.saveRecord(BrandRecord(brandId: o.id, kind: .promise, title: "Lansman takvimi pazartesi", dueDate: day(2)))
+    try store.saveRecord(BrandRecord(brandId: o.id, kind: .proposal, title: "Açılış kampanyası teklifi", status: .draft))
+    try store.saveRecord(BrandRecord(brandId: o.id, kind: .contract, title: "Yıllık içerik sözleşmesi", status: .active))
+    try store.saveRecord(BrandRecord(brandId: o.id, kind: .milestone, title: "Sonbahar menüsü satışta", dueDate: day(10)))
+    try store.addTextSource(brandId: o.id, kind: .link, title: "Menü tasarım klasörü", body: "", url: "https://example.com/menu")
+    let oNote = try store.addTextSource(brandId: o.id, kind: .note, title: "Barista röportaj notları", body: "Baran: yeni sonbahar içeceği için tarçınlı şurup; müşteriler sıcak ve tatlıya yöneliyor.", capturedAt: cal.date(byAdding: .day, value: -2, to: now)!)
+    try store.addGeneratedOutput(brandId: o.id, fileName: "lansman-takvimi.md", content: "# Lansman takvimi\n\nPazartesi: teaser\nÇarşamba: reels", title: "Lansman takvimi", actor: .ai)
+    try store.addGeneratedOutput(brandId: o.id, fileName: "menu-metinleri.md", content: "# Menü metinleri\n\nTarçınlı latte: …", title: "Menü metinleri", actor: .user)
+    for (title, amt, date, st) in [("Eylül içerik hizmeti", 2_400_000 as Int64, "2026-09-08", PaymentStatus.collected), ("Ekim içerik hizmeti", 2_400_000, "2026-10-08", .pending), ("Kasım içerik hizmeti", 2_400_000, "2026-11-08", .planned)] {
+        try store.saveFinanceEntry(FinanceEntry(brandId: o.id, kind: .payment, title: title, amountMinor: amt, date: date, status: st))
+    }
+    try store.saveFinanceEntry(FinanceEntry(brandId: o.id, kind: .budget, title: "Menü fotoğraf çekimi", amountMinor: 750_000, note: "Stüdyo ayrıldı"))
+    try store.saveFinanceEntry(FinanceEntry(brandId: o.id, kind: .budget, title: "Açılış influencer paketi", amountMinor: 1_500_000, note: "Teklif bekleniyor"))
+    let oLog = try store.saveWorkLog(WorkLog(brandId: o.id, title: "Lansman içerik planı çıkarıldı", requested: "Sonbahar menüsü için 2 haftalık plan", performed: "14 günlük içerik takvimi: 6 reels, 8 gönderi, 3 hikâye serisi.", decision: "Teaser gönderisi pazartesi", occurredAt: ago(22)), inputSourceIds: [oNote.id], outputSourceIds: [])
+    try store.verifyWorkLog(oLog.id, verifiedBy: "Danışman")
+    try store.saveWorkLog(WorkLog(brandId: o.id, title: "Barista röportajı notlandı", performed: "Baş barista ile 20 dakikalık görüşme özetlendi.", occurredAt: ago(5)), inputSourceIds: [], outputSourceIds: [])
+    try store.ingestSuggestionFile(brandId: o.id, fileName: "2026-10-02-oneri.json", sha256: "demo-kafe", drafts: [
+        SuggestionDraft(kind: .createTask, summary: "Yeni görev: Hikâye şablonları", payload: ProposalPayload.CreateTask(title: "Hikâye şablonları", notes: "Sonbahar renkleriyle üç şablon.", priority: 1)),
+    ])
+    // Raporlar: Kuzey ve Kafe için de bu haftanın taslağı.
+    let builder = ReportBuilder(store: store)
+    let week = builder.period(.weekly, containing: now)
+    for b in [k, o] { _ = try? store.createReportDraft(brandId: b.id, period: .weekly, interval: week, content: try builder.build(brandId: b.id, period: week)) }
+    _ = a
 }
 
 /// Tohumlanan sentetik verinin doğrulama adımlarında gereken kimlikleri.
@@ -283,6 +418,14 @@ func seedDemo(store: Store) throws -> DemoSeed {
     let now = Date()
     func day(_ offset: Int) -> String { DayString.from(cal.date(byAdding: .day, value: offset, to: now)!) }
     let a = try store.createBrand(name: "Deneme Yangın", summary: "Yangın söndürme ekipmanı üreticisi; kurumsal satış ve dijital görünürlük danışmanlığı.", sector: "Yangın güvenliği")
+    try store.setProfileSection(brandId: a.id, .audience, body: "Fabrika, depo ve toplu konut yöneticileri. Satın alma kararını çoğunlukla teknik müdür verir; sertifika ve servis süresi belirleyicidir.")
+    try store.setProfileSection(brandId: a.id, .voice, body: "Sade, güvenilir, abartısız. Hitap: siz. Korku dili kullanılmaz; “önlem” vurgulanır. Teknik terim kullanılırsa bir cümleyle açıklanır.")
+    try store.setProfileSection(brandId: a.id, .constraints, body: "Standart ve sertifika iddiaları belgeyle desteklenir. Rakip adı anılmaz. Fiyat vaadi yazılı teklif dışında verilmez.")
+    try store.saveFinanceEntry(FinanceEntry(brandId: a.id, kind: .payment, title: "Eylül danışmanlık hizmeti", amountMinor: 4_500_000, date: "2026-09-05", status: .collected))
+    try store.saveFinanceEntry(FinanceEntry(brandId: a.id, kind: .payment, title: "Ekim danışmanlık hizmeti", amountMinor: 4_500_000, date: "2026-10-05", status: .pending))
+    try store.saveFinanceEntry(FinanceEntry(brandId: a.id, kind: .payment, title: "Kasım danışmanlık hizmeti", amountMinor: 4_500_000, date: "2026-11-05", status: .planned))
+    try store.saveFinanceEntry(FinanceEntry(brandId: a.id, kind: .budget, title: "Fotoğraf çekimi", amountMinor: 1_200_000, note: "Müşteri onayı bekliyor"))
+    try store.saveFinanceEntry(FinanceEntry(brandId: a.id, kind: .budget, title: "İçerik prodüksiyonu", note: "Kapsam netleşince planlanacak"))
     let b = try store.createBrand(name: "Örnek Kafe Zinciri", summary: "12 şubeli kafe zinciri.", sector: "Yiyecek-içecek")
     try store.createBrand(name: "Kuzey Lojistik", sector: "Lojistik")
     try store.setAIProviders(a.id, providers: [.anthropic, .codex])
@@ -332,6 +475,129 @@ func seedDemo(store: Store) throws -> DemoSeed {
     try store.createReportDraft(brandId: a.id, period: .weekly, interval: week, content: try builder.build(brandId: a.id, period: week))
     try store.setSetting("onboarded", "demo")
     return DemoSeed(brandA: a.id, brandB: b.id, meetingId: meeting.id)
+}
+
+/// Demo için YOĞUN geçmiş: Deneme Yangın 12 ay, Kuzey Lojistik 6 ay, Örnek Kafe Zinciri 3 ay; bugüne kadar aktif kullanıcı izlenimi.
+/// Tamamen uydurma ve belirleyici (aynı veri her kurulumda). Gerçek veriyle ilgisi yok.
+func yogunDemo(store: Store) throws {
+    struct Plan {
+        let brand: String; let months: Int; let perMonth: Int; let projects: [String]; let tasks: [String]; let notes: [String]
+        let meetings: [String]; let files: [String]; let links: [(String, String)]; let payment: (String, Int64); let budgets: [(String, Int64)]
+        let people: [String]; let doneNotes: [String]
+    }
+    let plans: [Plan] = [
+        Plan(brand: "Deneme Yangın", months: 12, perMonth: 6, projects: ["Fuar katılımı", "Bayi ağı kampanyası", "Eğitim videoları", "Ürün kataloğu"],
+             tasks: ["Fuar standı broşürünü hazırla", "Bayi toplantısı sunumunu yaz", "Teknik föy PDF'ini güncelle", "Ürün fotoğraflarını seç", "E-bülten metnini yaz", "Rakip fiyat listesini güncelle",
+                     "Eğitim videosu senaryosu", "Katalog sayfa düzenini onayla", "LinkedIn gönderisi hazırla", "Teklif şablonunu revize et", "Müşteri referans metni topla", "Sertifika görsellerini düzenle",
+                     "Bayi hoş geldin paketi", "Saha ziyareti raporu", "Fiyat listesi PDF'i", "Web sitesi SSS bölümü", "Basın bülteni taslağı", "Tesis tanıtım metni", "Kampanya afişi metni", "Yıl sonu raporu taslağı"],
+             notes: ["Müşteri toplantısı notları", "Fuar gözlemleri", "Bayi geri bildirimleri", "Rakip analizi notları", "Satış ekibi sorularının özeti", "Kampanya fikirleri"],
+             meetings: ["Aylık değerlendirme toplantısı", "Bayi görüşmesi", "Satış ekibi toplantısı", "Genel müdür sunumu"], files: ["fuar-brosur-taslagi", "fiyat-listesi", "katalog-ozet", "bayi-sunumu", "egitim-senaryosu", "kampanya-plani", "sertifika-listesi", "musteri-referanslari"],
+             links: [("Sektör fuarı sayfası", "https://example.com/fuar"), ("Standart belgeleri", "https://example.com/standartlar"), ("Rakip karşılaştırma tablosu", "https://example.com/rakipler")],
+             payment: ("danışmanlık hizmeti", 4_500_000), budgets: [("Fuar standı tasarımı", 2_400_000), ("Katalog baskısı", 1_800_000), ("Eğitim videosu çekimi", 3_000_000)],
+             people: ["Murat Kaya", "Elif Aksoy", "Ayşe Demir"], doneNotes: ["Tamamlandı, müşteri onayladı", "Gönderildi", "Revize edildi"]),
+        Plan(brand: "Kuzey Lojistik", months: 6, perMonth: 7, projects: ["Soğuk zincir kampanyası", "Sürücü hikâyeleri", "Kurumsal web yenileme"],
+             tasks: ["Vaka çalışması röportajı", "LinkedIn gönderi takvimi", "Soğuk zincir infografiği", "Sürücü portre çekimi", "Müşteri memnuniyet anketi", "Haftalık bülten metni", "Filo tanıtım videosu",
+                     "Teslimat oranı raporu görseli", "Basın bülteni", "Sektör raporu özeti", "Web sitesi hizmetler sayfası", "Teklif sunumu güncellemesi", "Depo tanıtım fotoğrafları", "Etkinlik daveti metni"],
+             notes: ["Operasyon toplantısı notları", "Müşteri geri bildirimleri", "Sosyal medya analitiği", "Sektör haberleri özeti"],
+             meetings: ["Operasyon direktörü toplantısı", "Satış ekibi görüşmesi", "Aylık içerik toplantısı"], files: ["vaka-calismasi-1", "linkedin-takvimi", "infografik-taslagi", "surucu-roportaji", "bulten-sablonu", "teklif-sunumu"],
+             links: [("Sektör raporu", "https://example.com/sektor"), ("LinkedIn analitiği", "https://example.com/analitik")],
+             payment: ("danışmanlık hizmeti", 3_200_000), budgets: [("Video çekimi", 1_500_000), ("LinkedIn reklam denemesi", 800_000)],
+             people: ["Kerem Yıldız", "Seda Polat"], doneNotes: ["Yayınlandı", "Onaylandı", "Müşteriye iletildi"]),
+        Plan(brand: "Örnek Kafe Zinciri", months: 3, perMonth: 9, projects: ["Kış menüsü", "Sadakat programı", "Şube açılış kampanyası"],
+             tasks: ["Instagram reels kurgusu", "Menü fotoğraf çekimi", "Hikâye şablonları", "Sadakat kartı metinleri", "Barista röportajı", "Haftalık gönderi planı", "Şube açılış davetiyesi",
+                     "Kış içecekleri isimlendirme", "Müşteri yorumları özeti", "Influencer listesi", "Poster metinleri", "E-posta bülteni", "Kampanya görselleri", "Lansman basın notu"],
+             notes: ["Barista geri bildirimleri", "Müşteri yorumları", "Sosyal medya fikirleri", "Şube ziyareti notları"],
+             meetings: ["Marka müdürü toplantısı", "Şube müdürleri görüşmesi", "İçerik planı toplantısı"], files: ["menu-metinleri", "lansman-takvimi", "sadakat-brosuru", "hikaye-sablonlari", "kampanya-ozeti", "influencer-listesi"],
+             links: [("Menü tasarım klasörü", "https://example.com/menu"), ("Instagram analitiği", "https://example.com/insta")],
+             payment: ("içerik hizmeti", 2_400_000), budgets: [("Menü fotoğraf çekimi", 750_000), ("Influencer paketi", 1_500_000)],
+             people: ["Deniz Çelik", "Baran Tunç"], doneNotes: ["Paylaşıldı", "Onaylandı", "Yayına alındı"]),
+    ]
+    let cal = StatusService.turkishCalendar
+    let now = Date()
+    func date(daysAgo d: Int, hour: Int = 11) -> Date {
+        let base = cal.date(byAdding: .day, value: -d, to: now)!
+        return cal.date(bySettingHour: hour, minute: 0, second: 0, of: base) ?? base
+    }
+    func day(_ d: Int) -> String { DayString.from(date(daysAgo: -d)) }
+    var seed: UInt64 = 7
+    func rnd(_ n: Int) -> Int { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return Int((seed >> 33) % UInt64(max(n, 1))) }
+
+    for plan in plans {
+        guard let brand = try store.brands().first(where: { $0.name == plan.brand }) else { continue }
+        let span = plan.months * 30
+        // Projeler
+        for (i, name) in plan.projects.enumerated() {
+            try store.saveProject(Project(brandId: brand.id, name: name + " (\(plan.months > 6 ? "2026" : "güncel"))", goal: "\(name) çalışmaları", status: i == 0 ? .active : (i == 1 ? .active : .done), dueDate: day(10 + i * 12)))
+        }
+        let projects = try store.projects(brandId: brand.id)
+        // Görevler ve iş kayıtları (en eskiden en yeniye)
+        let total = plan.months * plan.perMonth
+        var doneTasks: [WorkTask] = []
+        for i in 0..<total {
+            let age = max(0, span - i * span / total - rnd(4))
+            let title = plan.tasks[i % plan.tasks.count] + (i >= plan.tasks.count ? " (\(i / plan.tasks.count + 1). tur)" : "")
+            let proj = projects.isEmpty ? nil : projects[(i + rnd(2)) % projects.count].id
+            let created = date(daysAgo: age + 3 + rnd(5), hour: 9)
+            if age > 8 || (age > 3 && rnd(10) < 7) {
+                let completed = date(daysAgo: age, hour: 10 + rnd(8))
+                let t = try store.saveTask(WorkTask(brandId: brand.id, projectId: proj, title: title, assignee: "Claude", priority: rnd(4), dueDate: DayString.from(completed), status: .done, createdAt: created, completedAt: completed))
+                doneTasks.append(t)
+                _ = try? store.addManualTime(taskId: t.id, seconds: 1800 + rnd(5) * 1800, endingAt: completed)
+                if rnd(10) < 8 {
+                    let who = plan.people[rnd(plan.people.count)]
+                    let log = try store.saveWorkLog(WorkLog(brandId: brand.id, taskId: t.id, title: title + " tamamlandı", requested: "\(who) tarafından istendi",
+                        performed: "\(title) hazırlandı; kapsam ve içerik gözden geçirildi, son hâli onaya sunuldu.", decision: plan.doneNotes[rnd(plan.doneNotes.count)],
+                        approvedBy: who, clientNotified: rnd(2) == 0 ? "E-posta ile iletildi" : "", occurredAt: completed), inputSourceIds: [], outputSourceIds: [])
+                    if age > 3 { try? store.verifyWorkLog(log.id, verifiedBy: "Danışman") }
+                }
+            } else {
+                let status: TaskStatus = [.todo, .inProgress, .waiting, .todo][rnd(4)]
+                try store.saveTask(WorkTask(brandId: brand.id, projectId: proj, title: title, assignee: "Claude", priority: rnd(4), dueDate: day(rnd(18) - 2), status: status, createdAt: created))
+            }
+        }
+        // Bugün ve dün: aktif kullanıcı izlenimi
+        for (k, text) in ["Günün planı çıkarıldı", "Müşteri e-postası yanıtlandı", "İçerik taslağı gözden geçirildi"].enumerated() {
+            if let t = doneTasks.last {
+                try? store.saveWorkLog(WorkLog(brandId: brand.id, taskId: t.id, title: text, performed: "\(text); sonraki adımlar listelendi.", occurredAt: date(daysAgo: 0, hour: 8 + k * 2)), inputSourceIds: [], outputSourceIds: [])
+            }
+        }
+        // Notlar, görüşmeler, bağlantılar, dosyalar (geçmişe yayılmış)
+        for i in 0..<(plan.months * 3) {
+            try store.addTextSource(brandId: brand.id, kind: .note, title: plan.notes[i % plan.notes.count] + (i >= plan.notes.count ? " \(i / plan.notes.count + 1)" : ""),
+                                    body: "Önemli noktalar: öncelikler netleşti, bir sonraki adım için sorumlu belirlendi, müşteri geri dönüşü bekleniyor.", capturedAt: date(daysAgo: span - i * span / (plan.months * 3) - 1))
+        }
+        for i in 0..<(plan.months * 2) {
+            try store.addTextSource(brandId: brand.id, kind: .meeting, title: plan.meetings[i % plan.meetings.count] + " · \(i + 1)", body: "Gündem: ilerleme, engeller, sonraki ay planı. Kararlar not edildi.", capturedAt: date(daysAgo: span - i * span / (plan.months * 2) - 2, hour: 14))
+        }
+        for link in plan.links { try store.addTextSource(brandId: brand.id, kind: .link, title: link.0, body: "", url: link.1) }
+        for (i, file) in plan.files.enumerated() {
+            _ = try? store.addGeneratedOutput(brandId: brand.id, fileName: file + ".md", content: "# \(file.replacingOccurrences(of: "-", with: " ").capitalized)\n\nTaslak içerik, \(plan.brand) için hazırlandı.\n\n- Madde bir\n- Madde iki\n- Madde üç", title: file.replacingOccurrences(of: "-", with: " ").capitalized, actor: i % 2 == 0 ? .ai : .user)
+        }
+        // Kayıtlar: kapanmış ve açık
+        for (i, kind) in [BrandRecordKind.promise, .decision, .milestone, .request, .promise, .decision, .milestone, .request].enumerated() {
+            let closed = i < 4
+            try store.saveRecord(BrandRecord(brandId: brand.id, kind: kind, title: ["Aylık raporu zamanında teslim et", "Bütçe revizyonu onayı", "Kampanya başlangıcı", "Yeni içerik talebi", "Haftalık takvimi paylaş", "Kapsam değişikliği kararı", "Sonraki çeyrek planı", "Ek görsel talebi"][i],
+                                          status: closed ? .done : .open, dueDate: closed ? day(-(30 + i * 20)) : day(3 + i * 4), createdAt: date(daysAgo: 40 + i * 15), closedAt: closed ? date(daysAgo: 25 + i * 15) : nil))
+        }
+        // Finans: geçmiş tahsil edilmiş, bu ay bekleniyor, gelecek planlı
+        let monthNames = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+        for m in -(plan.months - 1)...2 {
+            let d = cal.date(byAdding: .month, value: m, to: now)!
+            let name = monthNames[cal.component(.month, from: d) - 1]
+            let st: PaymentStatus = m < 0 ? .collected : (m == 0 ? .pending : .planned)
+            let dayStr = DayString.from(cal.date(bySetting: .day, value: 5 + (plan.brand.count % 5), of: d) ?? d)
+            try store.saveFinanceEntry(FinanceEntry(brandId: brand.id, kind: .payment, title: "\(name) \(plan.payment.0)", amountMinor: plan.payment.1, date: dayStr, status: st))
+        }
+        for b in plan.budgets { try store.saveFinanceEntry(FinanceEntry(brandId: brand.id, kind: .budget, title: b.0, amountMinor: b.1, note: "Plan dahilinde")) }
+        // Geçmiş haftalık rapor taslakları
+        let builder = ReportBuilder(store: store)
+        for w in 1...min(8, plan.months * 4) {
+            let d = date(daysAgo: w * 7)
+            let period = builder.period(.weekly, containing: d)
+            _ = try? store.createReportDraft(brandId: brand.id, period: .weekly, interval: period, content: try builder.build(brandId: brand.id, period: period, now: d))
+        }
+    }
+    log("yoğun geçmiş eklendi")
 }
 
 // MARK: - Anthropic (Claude API) canlı doğrulama
@@ -717,6 +983,43 @@ Task { @MainActor in
             fflush(stdout)
             exit(code)
         case "demo": try seedDemo(path: CommandLine.arguments[2])
+        case "profil-yaz":
+            // `profil-yaz <çalışma alanı> <marka> <bölüm anahtarı> <metin dosyası>`: marka profili bölümünü yazar (aktör: AI).
+            let a = CommandLine.arguments
+            let store = Store(database: try AppDatabase.open(at: URL(fileURLWithPath: a[2])))
+            guard let b = try store.brands().first(where: { $0.name == a[3] }) else { log("marka yok: \(a[3])"); exit(1) }
+            guard let section = ProfileSection(rawValue: a[4]) else { log("bölüm yok: \(a[4])"); exit(1) }
+            try store.setProfileSection(brandId: b.id, section, body: String(contentsOfFile: a[5], encoding: .utf8), actor: .ai)
+            log("yazıldı: \(a[3]) / \(a[4])")
+        case "gorev-proje":
+            // `gorev-proje <çalışma alanı> <marka> <proje adı> <görev başlığı>`: görevi projeye bağlar.
+            let a = CommandLine.arguments
+            let store = Store(database: try AppDatabase.open(at: URL(fileURLWithPath: a[2])))
+            guard let b = try store.brands().first(where: { $0.name == a[3] }),
+                  let p = try store.projects(brandId: b.id).first(where: { $0.name == a[4] }),
+                  var t = try store.tasks(brandId: b.id).first(where: { $0.title == a[5] }) else { log("bulunamadı: \(a[3]) / \(a[4]) / \(a[5])"); exit(1) }
+            t.projectId = p.id
+            try store.saveTask(t, actor: .ai)
+            log("bağlandı: \(a[5]) → \(a[4])")
+        case "hedef-proje":
+            // `hedef-proje <çalışma alanı> <marka> <hedef başlığı> <proje adı>`: hedefi projeye bağlar (ilerleme görevlerden hesaplanır).
+            let a = CommandLine.arguments
+            let store = Store(database: try AppDatabase.open(at: URL(fileURLWithPath: a[2])))
+            guard let b = try store.brands().first(where: { $0.name == a[3] }),
+                  let p = try store.projects(brandId: b.id).first(where: { $0.name == a[5] }),
+                  var r = try store.records(brandId: b.id, kinds: [.goal]).first(where: { $0.title == a[4] }) else { log("bulunamadı"); exit(1) }
+            r.projectId = p.id
+            try store.saveRecord(r, actor: .ai)
+            log("bağlandı: \(a[4]) → \(a[5])")
+        case "arsivle":
+            // `arsivle <çalışma alanı> <kalacak marka adı>`: kalan tüm etkin markaları arşivler (geri alınabilir; veri silinmez).
+            let store = Store(database: try AppDatabase.open(at: URL(fileURLWithPath: CommandLine.arguments[2])))
+            let keep = CommandLine.arguments[3]
+            guard try store.brands().contains(where: { $0.name == keep }) else { log("kalacak marka bulunamadı: \(keep)"); exit(1) }
+            for b in try store.brands() where b.name != keep {
+                try store.setBrandArchived(b.id, archived: true)
+                log("arşivlendi: \(b.name)")
+            }
         case "joi":
             // Gerçek veriyle kuru çalıştırma: kaynak salt okunur, hedef geçici çalışma alanı.
             let dir = URL(fileURLWithPath: CommandLine.arguments[2])

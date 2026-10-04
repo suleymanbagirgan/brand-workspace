@@ -32,8 +32,8 @@ done
 
 VERSION="$(scripts/version.sh)"
 BUILD="$(scripts/version.sh --build)"
-APP_NAME="Marka Çalışma Alanı.app"
-APP="dist/$APP_NAME"
+APP_NAME="Workspace AI.app"
+APP="$HOME/Applications/$APP_NAME"
 DMG="dist/MarkaCalismaAlani-$VERSION.dmg"
 WORK="build/release"
 MNT=""

@@ -40,7 +40,7 @@ struct ReportsView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Design.Space.l).padding(.top, Design.Space.s).padding(.bottom, Design.Space.l)
+            .pagePadding().padding(.top, Design.Space.l).padding(.bottom, Design.Space.l)
         }
         .onChange(of: brand.id) { opened = nil; editing = nil; range = .thisWeek }
     }
@@ -59,7 +59,10 @@ struct ReportsView: View {
                     ReportPage(content: p.content, draft: nil, caption: caption(p), brandName: brand.name)
                 }
             }
-            .frame(maxWidth: 720, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 32).padding(.horizontal, 24)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Design.canvas))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Design.line))
             history(p).frame(maxWidth: 720, alignment: .leading)
         }
     }
@@ -69,43 +72,53 @@ struct ReportsView: View {
     /// Ekranda tek birincil düğme: taslakta *Hazır, PDF al*, hazırken *PDF*, düzenlerken *Kaydet*. "···" menüsünde
     /// Düzenle ve E-posta taslağı; düzenlerken yalnız AI özeti (ya da özeti kaldırma) ve *Vazgeç* (Esc).
     private func header(_ p: ReportPreview) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Design.Space.m) {
-            // Dönem: dört sabit dönem (kaydedilmiş raporlar Geçmiş'te).
-            TextMenu(title: periodTitle, help: L("Dönem")) {
-                ForEach(ReportRange.allCases, id: \.self) { r in
-                    Button(title(r)) { editing = nil; range = r; opened = nil }
-                }
-            }
-            .padding(.horizontal, -Design.Space.xs)
-            Text(L("· yalnız doğrulanmış iş kayıtlarından")).captionStyle().lineLimit(1)
-            Spacer(minLength: Design.Space.m)
-            if let draft = editing {
-                let hasSummary = !draft.summary.isEmpty
-                if hasSummary || brand.allows(.anthropic) || brand.allows(.codex) {
-                    // Tek düğme: özet yoksa AI ile yazdırır, varsa kaldırır.
-                    Button(hasSummary ? L("Özeti kaldır") : (summarizing ? L("Yazılıyor…") : L("AI ile özet"))) {
-                        if hasSummary { editing?.summary = [] } else { summarize() }
+        VStack(alignment: .leading, spacing: Design.Space.l) {
+            SectionHeading(title: L("Rapor"), subtitle: L("Müşteri özeti"), symbol: "doc.text", tintKey: brand.id) { actions(p) }
+            HStack(spacing: Design.Space.s) {
+                Text(Self.rangeText(p.interval)).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(L("· yalnız doğrulanmış iş kayıtlarından")).captionStyle().lineLimit(1)
+                Spacer(minLength: Design.Space.m)
+                // Dönem: dört sabit dönem (kaydedilmiş raporlar Geçmiş'te).
+                Menu {
+                    ForEach(ReportRange.allCases, id: \.self) { r in
+                        Button(title(r)) { editing = nil; range = r; opened = nil }
                     }
-                    .buttonStyle(.text)
-                    .disabled(!hasSummary && (summarizing || !summaryChoice.isAvailable))
-                    .help(hasSummary ? L("AI özetini rapordan çıkarır") : summaryChoice.help)
+                } label: {
+                    Text(L("Dönemi değiştir") + " · " + periodTitle).font(.system(size: 12)).foregroundStyle(Design.accent)
                 }
-                Button(L("Vazgeç")) { editing = nil }
-                    .buttonStyle(.text).keyboardShortcut(.cancelAction)
-                Button(L("Kaydet")) { save(p) }.buttonStyle(.borderedProminent)
-            } else {
-                TextMenu(title: "···", help: L("Diğer")) {
-                    Button(L("Düzenle")) { editing = p.content }.disabled(p.isEmpty)
-                    Button(p.isApproved ? L("E-posta taslağı…") : L("E-posta taslağı… (rapor hazır olunca)")) { mailDraft(p) }
-                        .disabled(!p.isApproved)
-                }
-                Button(p.isApproved ? L("PDF") : L("Hazır, PDF al")) { exportPDF(p, markReady: !p.isApproved) }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(p.isEmpty)
-                    .help(p.isApproved ? L("PDF olarak kaydet") : L("Raporu hazır olarak işaretler ve müşteriye gidecek PDF'i kaydeder"))
+                .menuStyle(.borderlessButton).fixedSize()
+                .help(L("Dönem"))
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Başlığın sağındaki eylemler: düzenlerken AI özeti · Vazgeç · Kaydet; değilken ··· (Düzenle) · E-posta taslağı · PDF.
+    @ViewBuilder private func actions(_ p: ReportPreview) -> some View {
+        if let draft = editing {
+            let hasSummary = !draft.summary.isEmpty
+            if hasSummary || brand.allows(.anthropic) || brand.allows(.codex) {
+                // Tek düğme: özet yoksa AI ile yazdırır, varsa kaldırır.
+                Button(hasSummary ? L("Özeti kaldır") : (summarizing ? L("Yazılıyor…") : L("AI ile özet"))) {
+                    if hasSummary { editing?.summary = [] } else { summarize() }
+                }
+                .actionSecondary()
+                .disabled(!hasSummary && (summarizing || !summaryChoice.isAvailable))
+                .help(hasSummary ? L("AI özetini rapordan çıkarır") : summaryChoice.help)
+            }
+            Button(L("Vazgeç")) { editing = nil }.actionSecondary().keyboardShortcut(.cancelAction)
+            Button(L("Kaydet")) { save(p) }.actionPrimary()
+        } else {
+            Button(L("Düzenle")) { editing = p.content }.actionSecondary().disabled(p.isEmpty)
+            Button { mailDraft(p) } label: { Label(L("E-posta taslağı"), systemImage: "envelope").labelStyle(.titleAndIcon) }
+                .actionSecondary().disabled(!p.isApproved)
+                .help(p.isApproved ? L("Raporu e-posta taslağı olarak aç") : L("Rapor hazır olunca açılır"))
+            Button { exportPDF(p, markReady: !p.isApproved) } label: {
+                Label(p.isApproved ? L("PDF") : L("Hazır, PDF al"), systemImage: "arrow.down.to.line").labelStyle(.titleAndIcon)
+            }
+            .actionPrimary().disabled(p.isEmpty)
+            .help(p.isApproved ? L("PDF olarak kaydet") : L("Raporu hazır olarak işaretler ve müşteriye gidecek PDF'i kaydeder"))
+        }
     }
 
     private var periodTitle: String {
@@ -143,28 +156,45 @@ struct ReportsView: View {
     @ViewBuilder private func notices(_ p: ReportPreview) -> some View {
         let excluded = p.live.warnings
         let changed = p.showsSaved && p.changedWorkLogs > 0 && editing == nil
-        let parts = noticeParts(p, changed: changed)
-        if !parts.isEmpty {
-            HStack(alignment: .firstTextBaseline, spacing: Design.Space.s) {
-                Text(parts.joined(separator: " · ")).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
-                    .help(([parts.joined(separator: "\n")] + excluded.map(\.text)).joined(separator: "\n"))
-                if p.unverifiedWorkLogs > 0 || !excluded.isEmpty {
-                    Button(L("Akış'ta gör")) { app.brandTab = .flow }.buttonStyle(.text)
+        let included = p.content.section(.completedWork)?.items.count ?? 0
+        let ready = p.unverifiedWorkLogs == 0 && excluded.isEmpty && !changed
+        if editing == nil && !p.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                check(ok: true, text: LF("Rapora giren iş: %d", included), action: nil)
+                if p.unverifiedWorkLogs > 0 {
+                    Rectangle().fill(Design.line).frame(height: 1)
+                    check(ok: false, text: LF("Doğrulanmamış iş kaydı: %d. Doğrulanana kadar rapora girmez", p.unverifiedWorkLogs),
+                          action: (L("Özet'te doğrula"), { app.brandTab = .flow }))
+                }
+                if !excluded.isEmpty {
+                    Rectangle().fill(Design.line).frame(height: 1)
+                    check(ok: false, text: LF("İş kaydı olmayan biten görev: %d. Rapora girmez", excluded.count),
+                          action: (L("Özet'te gör"), { app.brandTab = .flow }))
                 }
                 if changed {
-                    Button(L("İş kayıtlarından yenile")) { refresh(p) }.buttonStyle(.text)
-                        .help(L("İş kayıtlarından yeni taslak sürüm oluşturur. Düzenlemeler yeni sürüme taşınmaz; eski sürüm Geçmiş'te kalır."))
+                    Rectangle().fill(Design.line).frame(height: 1)
+                    check(ok: false, text: LF("Bu sürümden sonra %d iş kaydı değişti", p.changedWorkLogs),
+                          action: (L("Yenile"), { refresh(p) }))
+                }
+                if ready {
+                    Rectangle().fill(Design.line).frame(height: 1)
+                    check(ok: true, text: L("Rapor göndermeye hazır"), action: nil)
                 }
             }
+            .card()
         }
     }
 
-    private func noticeParts(_ p: ReportPreview, changed: Bool) -> [String] {
-        var parts: [String] = []
-        if p.unverifiedWorkLogs > 0 { parts.append(LF("%d iş kaydı doğrulanmadı", p.unverifiedWorkLogs)) }
-        if !p.live.warnings.isEmpty { parts.append(LF("%d biten görev rapora girmedi (iş kaydı yok)", p.live.warnings.count)) }
-        if changed { parts.append(LF("Bu sürümden sonra %d iş kaydı değişti", p.changedWorkLogs)) }
-        return parts
+    /// Hazırlık satırı: ✓ tamam, ! dikkat; dikkat satırında tek eylem.
+    private func check(ok: Bool, text: String, action: (String, () -> Void)?) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill").font(.system(size: 15))
+                .foregroundStyle(ok ? AnyShapeStyle(Color.green) : AnyShapeStyle(Color.orange)).accessibilityHidden(true)
+            Text(text).font(.system(size: 12)).frame(maxWidth: .infinity, alignment: .leading)
+            if let action { Button(action.0, action: action.1).buttonStyle(.text) }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Geçmiş (tek yer)
@@ -363,10 +393,13 @@ struct ReportPage: View {
                 }
             }
         }
-        .padding(Design.Space.l + Design.Space.m)
-        .frame(maxWidth: 720, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: Design.radius).fill(Design.bandBackground))
-        .overlay(RoundedRectangle(cornerRadius: Design.radius).strokeBorder(Design.line))
+        .padding(44)
+        .frame(maxWidth: 680, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Design.reportPaper))
+        .shadow(color: .black.opacity(0.10), radius: 14, y: 4)
+        .shadow(color: .black.opacity(0.05), radius: 1, y: 0)
+        // Rapor müşteriye giden belgedir: her iki görünümde açık kâğıt, koyu yazı.
+        .environment(\.colorScheme, .light)
     }
 
     private func block<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {

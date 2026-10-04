@@ -3,8 +3,8 @@
 Derleme, test, ekran çizimi ve canlı doğrulama araçları. Depo kuralları: [CLAUDE.md](../CLAUDE.md).
 
 ```sh
-scripts/build-app.sh                 # dist/Marka Çalışma Alanı.app (ad-hoc imzalı)
-open "dist/Marka Çalışma Alanı.app"
+scripts/build-app.sh                 # dist/Workspace AI.app (ad-hoc imzalı)
+open "dist/Workspace AI.app"
 scripts/test.sh                      # 133 test (Swift Testing)
 python3 scripts/l10n.py check        # TR/EN çeviri ve İngilizce çoğul kapsamı
 scripts/ui-olcum.sh                  # arayüz sadelik ölçümü (docs/surum-0.2.1.md §8)

@@ -1,3 +1,4 @@
+import AppKit
 import MarkaCore
 import SwiftUI
 
@@ -33,12 +34,14 @@ struct TodayView: View {
                             }
                         }
                     }
-                    .padding(Design.Space.l)
+                    .pagePadding().padding(.vertical, Design.Space.l)
                     .frame(maxWidth: 980, alignment: .leading)
                 }
             }
         }
-        .navigationTitle(L("Bugün"))
+        .navigationTitle(app.preferences.scope.kind == .trial ? L("Bugün · Demo") : L("Bugün"))
+        // Açılışta ilk metin alanı odak halkası almasın (⌘F ile odaklanır).
+        .onAppear { DispatchQueue.main.async { if !app.focusSearch { NSApp.keyWindow?.makeFirstResponder(nil) } } }
         .onChange(of: app.focusSearch) { _, requested in if requested { takeSearchFocus() } }
         .task { if app.focusSearch { try? await Task.sleep(for: .milliseconds(150)); takeSearchFocus() } }
     }
@@ -48,25 +51,34 @@ struct TodayView: View {
         app.focusSearch = false
     }
 
+    /// Saate göre selamlama (Apple'ın ana ekran kalıbı: kişisel, kısa).
+    private var greeting: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 5..<12: L("Günaydın")
+        case 12..<18: L("İyi günler")
+        case 18..<23: L("İyi akşamlar")
+        default: L("İyi geceler")
+        }
+    }
+
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: Design.Space.xs) {
-                Text(L("Bugün")).font(Design.Font.title).accessibilityAddTraits(.isHeader)
-                Text(Date(), format: .dateTime.day().month(.wide).weekday(.wide)).captionStyle()
-            }
-            Spacer()
+        SectionHeading(title: greeting, subtitle: Date().formatted(.dateTime.day().month(.wide).weekday(.wide))) {
             InputField(title: L("Ara (⌘F)"), text: $query, focus: $searchFocused)
                 .frame(width: 260)
                 .accessibilityLabel(L("Tüm markalarda ara"))
         }
+        .padding(.bottom, Design.Space.l)
     }
 
     @ViewBuilder private func sections(_ t: TodaySummary) -> some View {
+        tiles(t)
         TodaySectionTitle(text: L("Onay bekliyor"))
         // Sayı kenar çubuğu ve onay bandıyla aynı: bekleyen öneriler + klasördeki eklenmemiş dosyalar (taranmışsa).
         let pendingBrands = app.brands.map(\.id).filter { app.approvalCount($0) > 0 }
-        if pendingBrands.isEmpty { EmptyStateView(message: L("Onay bekleyen bir şey yok.")) }
-        ForEach(pendingBrands, id: \.self) { brandId in
+        if pendingBrands.isEmpty { Text(L("Onay bekleyen bir şey yok.")).captionStyle().padding(.vertical, Design.Space.s) }
+        if !pendingBrands.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(pendingBrands, id: \.self) { brandId in
             TodayRow(brandId: brandId, text: LF("%d onay bekliyor", app.approvalCount(brandId))) {
                 app.select(brand: brandId)
                 app.brandSheet = .approvals(brandId)
@@ -74,37 +86,78 @@ struct TodayView: View {
                 Text(L("İncele"))
             }
         }
+            }
+            .flatList()
+        }
 
         TodaySectionTitle(text: L("Geciken"))
-        if t.overdue.isEmpty { EmptyStateView(message: L("Geciken iş yok.")) }
-        ForEach(t.overdue.prefix(12)) { line in
+        if t.overdue.isEmpty { Text(L("Geciken iş yok.")).captionStyle().padding(.vertical, Design.Space.s) }
+        if !t.overdue.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(t.overdue.prefix(12)) { line in
             TodayRow(brandId: line.brandId ?? "", text: line.text) {
                 app.open(line.ref)
             } trailing: {
                 if let due = line.dueDate { DueLabel(day: due) }
             }
         }
+            }
+            .flatList()
+        }
         if t.overdue.count > 12 { Text(LF("+%d daha", t.overdue.count - 12)).captionStyle().padding(.vertical, Design.Space.s) }
 
         TodaySectionTitle(text: L("Bu hafta yapılan"))
-        if t.week.isEmpty { EmptyStateView(message: L("Bu hafta yapılan iş yok.")) }
-        ForEach(t.week) { w in
+        if t.week.isEmpty { Text(L("Bu hafta yapılan iş yok.")).captionStyle().padding(.vertical, Design.Space.s) }
+        if !t.week.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(t.week) { w in
             TodayRow(brandId: w.brandId, text: weekText(w)) {
                 app.select(brand: w.brandId, tab: .flow)
             } trailing: {
                 if w.unverified > 0 { Text(LF("%d doğrulanmadı", w.unverified)).captionStyle() }
             }
         }
+            }
+            .flatList()
+        }
 
         TodaySectionTitle(text: L("Karar bekleniyor"))
-        if t.awaiting.isEmpty { EmptyStateView(message: L("Müşteriden karar beklenen bir şey yok.")) }
-        ForEach(t.awaiting) { a in
+        if t.awaiting.isEmpty { Text(L("Müşteriden karar beklenen bir şey yok.")).captionStyle().padding(.vertical, Design.Space.s) }
+        if !t.awaiting.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(t.awaiting) { a in
             TodayRow(brandId: a.brandId, text: a.titles.joined(separator: " · ")) {
                 app.select(brand: a.brandId, tab: .todo)
             } trailing: {
                 EmptyView()
             }
         }
+            }
+            .flatList()
+        }
+    }
+
+    /// Dört özet kutucuğu (Hatırlatıcılar'ın ana ekranı gibi): büyük sayı, simge, dokununca ilgili yere git.
+    private func tiles(_ t: TodaySummary) -> some View {
+        let pendingBrands = app.brands.map(\.id).filter { app.approvalCount($0) > 0 }
+        let pendingTotal = pendingBrands.reduce(0) { $0 + app.approvalCount($1) }
+        let doneTotal = t.week.reduce(0) { $0 + $1.tasksDone + $1.workLogs + $1.files + $1.notes }
+        let awaitingTotal = t.awaiting.reduce(0) { $0 + $1.titles.count }
+        return HStack(spacing: 14) {
+            TodayTile(symbol: "checkmark.seal", title: L("Onay bekliyor"), count: pendingTotal, emphasize: pendingTotal > 0) {
+                if let id = pendingBrands.first { app.select(brand: id); app.brandSheet = .approvals(id) }
+            }
+            TodayTile(symbol: "exclamationmark.circle", title: L("Geciken"), count: t.overdue.count, danger: !t.overdue.isEmpty) {
+                if let first = t.overdue.first { app.open(first.ref) }
+            }
+            TodayTile(symbol: "clock.arrow.circlepath", title: L("Bu hafta yapılan"), count: doneTotal) {
+                if let w = t.week.first { app.select(brand: w.brandId, tab: .flow) }
+            }
+            TodayTile(symbol: "hourglass", title: L("Karar bekleniyor"), count: awaitingTotal) {
+                if let a = t.awaiting.first { app.select(brand: a.brandId, tab: .todo) }
+            }
+        }
+        .padding(.bottom, Design.Space.s)
     }
 
     private func weekText(_ w: TodaySummary.Week) -> String {
@@ -146,10 +199,11 @@ struct TodayRow<Trailing: View>: View {
                 Text(text).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 trailing
             }
-            .padding(.vertical, Design.Space.s)
+            .padding(.vertical, 12).padding(.horizontal, 14)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .rowBackground(selected: false, radius: 0)
         .overlay(alignment: .bottom) { Rectangle().fill(Design.line).frame(height: 1) }
         .accessibilityLabel([brandName, kind ?? "", text].filter { !$0.isEmpty }.joined(separator: " · "))
     }
@@ -164,7 +218,7 @@ struct TodaySearchResults: View {
         let hits = (try? app.store?.searchToday(query)) ?? []
         VStack(alignment: .leading, spacing: 0) {
             TodaySectionTitle(text: LF("Arama sonuçları · %d", hits.count))
-            if hits.isEmpty { EmptyStateView(message: L("Sonuç yok.")) }
+            if hits.isEmpty { Text(L("Sonuç yok.")).captionStyle().padding(.vertical, Design.Space.s) }
             ForEach(hits) { hit in
                 TodayRow(brandId: hit.brandId, kind: hit.recordKind?.title ?? hit.ref.kind.shortTitle, text: hit.title) {
                     app.open(hit.ref)
@@ -173,5 +227,46 @@ struct TodaySearchResults: View {
                 }
             }
         }
+    }
+}
+
+
+/// Özet kutucuğu: simge rozeti, büyük sayı, ad. Sıfırken sönük; geciken kırmızı, onay bekleyen vurgulu.
+struct TodayTile: View {
+    let symbol: String
+    let title: String
+    let count: Int
+    var emphasize = false
+    var danger = false
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        let tint: AnyShapeStyle = danger ? AnyShapeStyle(Design.danger) : (emphasize ? AnyShapeStyle(Design.accent) : AnyShapeStyle(.secondary))
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Image(systemName: symbol).font(.system(size: 15, weight: .semibold)).foregroundStyle(tint)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Design.windowBackground))
+                        .overlay(Circle().strokeBorder(Design.line))
+                    Spacer()
+                    Text(verbatim: "\(count)").font(.system(size: 30, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(count == 0 ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                        .contentTransition(.numericText())
+                }
+                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(hovering ? AnyShapeStyle(Design.rowSelected) : AnyShapeStyle(Design.panel)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Design.line))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(LF("%1$@: %2$d", title, count))
+        .accessibilityAddTraits(.isButton)
     }
 }

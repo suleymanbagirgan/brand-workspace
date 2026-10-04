@@ -40,9 +40,9 @@ public enum Palette {
     }
 
     /// Metin olarak kullanılan vurgu (onay bekleyen sayısı, seçim çizgisi, kayıt bağlantısı).
-    public static let accentText = Pair(light: RGB(0xA0410E), dark: RGB(0xF79A5B))
+    public static let accentText = Pair(light: RGB(0x4E50D8), dark: RGB(0xA5A6FF))
     /// Dolgulu denetimlerin rengi (`.tint`): vurgulu düğme, onay kutusu. Üzerindeki yazı beyazdır.
-    public static let accentFill = Pair(light: RGB(0xA0410E), dark: RGB(0xB34A0C))
+    public static let accentFill = Pair(light: RGB(0x4E50D8), dark: RGB(0x5C5EE8))
     /// Yalnızca gecikme.
     public static let danger = Pair(light: RGB(0xB42318), dark: RGB(0xFF9A90))
 
@@ -52,8 +52,8 @@ public enum Palette {
     ]
 
     /// Denetimde kullanılan macOS yüzeyleri (yaklaşık sistem değerleri): içerik zemini ve pencere zemini.
-    public static let lightSurfaces = [RGB(0xFFFFFF), RGB(0xECECEC)]
-    public static let darkSurfaces = [RGB(0x1E1E1E), RGB(0x323232)]
+    public static let lightSurfaces = [RGB(0xFFFFFF), RGB(0xF4F5F8)]
+    public static let darkSurfaces = [RGB(0x20232C), RGB(0x191C24)]
     /// Seçili satır zemini: açıkta siyahın, koyuda beyazın bu opaklıkta yüzeye bindirilmiş hâli (`Design.selection`).
     public static let selectionAlpha = 0.08
 }

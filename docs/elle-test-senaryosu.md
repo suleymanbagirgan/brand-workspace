@@ -15,7 +15,7 @@ Terminal'den ayrı bir deneme veri alanıyla aç (gerçek kopyan açık kalabili
 ```sh
 mkdir -p ~/Desktop/marka-test
 MARKA_WORKSPACE=~/Desktop/marka-test/ws MARKA_FOLDERS=~/Desktop/marka-test/klasor \
-  "dist/Marka Çalışma Alanı.app/Contents/MacOS/MarkaCalismaAlani"
+  "dist/Workspace AI.app/Contents/MacOS/MarkaCalismaAlani"
 ```
 
 > Deneme kopyası kendi tercihlerini ve kendi Keychain kaydını kullanır; gerçek kopyanın API anahtarı burada görünmez. Finder'dan çift tıklamak deneme kopyasını açmaz.

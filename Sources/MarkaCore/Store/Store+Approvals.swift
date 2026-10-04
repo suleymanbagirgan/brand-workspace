@@ -65,10 +65,12 @@ extension Store {
 
 /// Marka ekranının üç bölümü (plan §4): Akış (ne yapıldı), Yapılacaklar (ne bekliyor), Rapor (müşteriye ne gidecek).
 public enum BrandSection: String, CaseIterable, Sendable, Identifiable {
-    case flow, todo, report
+    /// Sıra = sekme sırası = kısayol rakamı. Apple HIG: sekme görünümünde en fazla altı sekme. Planlama (Gantt, takvim)
+    /// Görevler'in görünümüdür; Hedefler Marka Bilgileri'nin bölümüdür.
+    case flow, todo, files, info, finance, report
     public var id: String { rawValue }
 
-    /// Menü kısayolu: ⌘1 Akış, ⌘2 Yapılacaklar, ⌘3 Rapor (⌘0 Bugün).
+    /// Menü kısayolu: ⌘1 Akış … ⌘6 Rapor (⌘0 Bugün).
     public var shortcutDigit: Int { (Self.allCases.firstIndex(of: self) ?? 0) + 1 }
 
     /// Bir kaydın "bölümde aç" hedefi. Bilgi sayfası artık bir bölümde görünmez (`nil`).

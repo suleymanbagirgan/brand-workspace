@@ -19,8 +19,9 @@ import Testing
         var t1 = try store.saveTask(WorkTask(brandId: b.id, title: "Teklif hazırla"))
         var t2 = try store.saveTask(WorkTask(brandId: b.id, title: "Kaydı olmayan iş"))
         try store.addManualTime(taskId: t1.id, seconds: 5400, endingAt: now)
-        t1.status = .done; t1 = try store.saveTask(t1)
-        t2.status = .done; t2 = try store.saveTask(t2)
+        // Bitiş zamanı testin sabit saatinde olmalı; yoksa gerçek saat kullanılır ve rapor haftasının dışında kalır.
+        t1.status = .done; t1.completedAt = now; t1 = try store.saveTask(t1)
+        t2.status = .done; t2.completedAt = now; t2 = try store.saveTask(t2)
         let log = try store.saveWorkLog(WorkLog(brandId: b.id, taskId: t1.id, title: "Teklif hazırlandı", requested: "Fiyat teklifi",
                                                 performed: "42 kalem fiyatlandırıldı", decision: "KDV hariç", occurredAt: now),
                                         inputSourceIds: [src.id], outputSourceIds: [out.id])

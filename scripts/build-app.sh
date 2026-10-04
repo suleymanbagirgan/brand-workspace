@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Marka Çalışma Alanı.app paketini üretir (Xcode gerektirmez).
+# Workspace AI.app paketini üretir (Xcode gerektirmez).
 # Kullanım: scripts/build-app.sh [--sign "Developer ID Application: …"]
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -8,7 +8,9 @@ if [[ "${1:-}" == "--sign" ]]; then SIGN_ID="$2"; fi
 # Sürüm tek kaynaktan: Sources/MarkaCore/Version.swift (scripts/version.sh okur ve biçimi denetler).
 VERSION="$(scripts/version.sh)"
 BUILD="$(scripts/version.sh --build)"
-APP="dist/Marka Çalışma Alanı.app"
+# Tek kopya: uygulama yalnız ~/Applications altında üretilir (proje içinde ikinci kopya bırakılmaz).
+APP="$HOME/Applications/Workspace AI.app"
+mkdir -p "$HOME/Applications"
 
 # Simge
 mkdir -p build/icon.iconset
@@ -36,8 +38,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>com.markacalismaalani.app</string>
-  <key>CFBundleName</key><string>Marka Çalışma Alanı</string>
-  <key>CFBundleDisplayName</key><string>Marka Çalışma Alanı</string>
+  <key>CFBundleName</key><string>Workspace AI</string>
+  <key>CFBundleDisplayName</key><string>Workspace AI</string>
   <key>CFBundleExecutable</key><string>MarkaCalismaAlani</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -60,4 +62,4 @@ else
   codesign --force --deep --options runtime --timestamp --sign "$SIGN_ID" "$APP"
 fi
 codesign --verify --deep --strict "$APP"
-echo "Hazır: $PWD/$APP"
+echo "Hazır: $APP"

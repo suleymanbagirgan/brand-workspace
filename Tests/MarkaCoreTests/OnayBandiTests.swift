@@ -58,8 +58,8 @@ import Testing
     }
 
     @Test func bolumlerKisayolVeKayitEslemesiSabittir() {
-        #expect(BrandSection.allCases == [.flow, .todo, .report])
-        #expect(BrandSection.allCases.map(\.shortcutDigit) == [1, 2, 3])
+        #expect(BrandSection.allCases == [.flow, .todo, .files, .info, .finance, .report])
+        #expect(BrandSection.allCases.map(\.shortcutDigit) == [1, 2, 3, 4, 5, 6])
         #expect(BrandSection.section(for: .workLog) == .flow)
         #expect(BrandSection.section(for: .source) == .flow)
         #expect(BrandSection.section(for: .task) == .todo)

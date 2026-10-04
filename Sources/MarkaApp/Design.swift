@@ -16,13 +16,30 @@ enum Design {
     /// Yalnızca gecikme.
     static let danger = AdaptiveColor(Palette.danger)
     /// İnce ayraç çizgisi.
-    static let line = AdaptiveColor(system: .separatorColor, light: Palette.RGB(0xD9D9D9), dark: Palette.RGB(0x3D3D3D))
+    static let line = AdaptiveColor(system: .separatorColor, light: Palette.RGB(0xE8EAF0), dark: Palette.RGB(0x363B48),
+                                    increased: (Palette.RGB(0x9AA1B2), Palette.RGB(0x7C8598)))
     /// Seçili satır zemini (kenar çubuğu). Opaklık `Palette.selectionAlpha` ile testle bağlı.
     static let selection = Color.primary.opacity(Palette.selectionAlpha)
     /// İçerik zemini; tek kutu istisnası olan onay bandı ve giriş alanları.
     static let bandBackground = AdaptiveColor(system: .controlBackgroundColor, light: Palette.lightSurfaces[0], dark: Palette.darkSurfaces[0])
     /// Pencere zemini.
     static let windowBackground = AdaptiveColor(system: .windowBackgroundColor, light: Palette.lightSurfaces[1], dark: Palette.darkSurfaces[1])
+
+    /// Kenar çubuğu zemini (0.3.0): açıkta #F4F5F8, koyuda #191C24.
+    static let sidebarBackground = AdaptiveColor(system: .windowBackgroundColor, light: Palette.lightSurfaces[1], dark: Palette.darkSurfaces[1])
+    /// Hafif yüzey (grup başlığı sayacı, alan zemini): #F7F8FA / #272B35.
+    static let panel = AdaptiveColor(system: .controlBackgroundColor, light: Palette.RGB(0xF7F8FA), dark: Palette.RGB(0x272B35))
+    /// Seçili marka satırı zemini.
+    static let rowSelected = AdaptiveColor(system: .selectedContentBackgroundColor.withAlphaComponent(0.18), light: Palette.RGB(0xE6E9F1), dark: Palette.RGB(0x303646))
+    /// Terminal paneli (her iki görünümde koyu).
+    static let terminalBackground = Color(.sRGB, red: 0x15 / 255, green: 0x18 / 255, blue: 0x20 / 255)
+    static let terminalPanel = Color(.sRGB, red: 0x1C / 255, green: 0x20 / 255, blue: 0x2B / 255)
+    static let terminalLine = Color(.sRGB, red: 0x2B / 255, green: 0x30 / 255, blue: 0x3D / 255)
+    static let terminalMuted = Color(.sRGB, red: 0xA0 / 255, green: 0xA9 / 255, blue: 0xBC / 255)
+
+    /// Rapor kâğıdı (her iki görünümde beyaza yakın: müşteriye giden belge) ve onu taşıyan tuval.
+    static let reportPaper = Color(.sRGB, red: 0.99, green: 0.99, blue: 0.99)
+    static let canvas = AdaptiveColor(Palette.Pair(light: Palette.RGB(0xE9ECF2), dark: Palette.RGB(0x15171D)))
 
     // MARK: Yazı (4 stil)
     enum Font {
@@ -43,7 +60,57 @@ enum Design {
         static let m: CGFloat = 16
         static let l: CGFloat = 24
     }
-    static let radius: CGFloat = 6
+    static let radius: CGFloat = 7
+    /// Sayfa kenar boşlukları. macOS 26'da kenar çubuğu içeriğin üstünde yüzen cam bir panel; sütun kenarından yaklaşık 24 pt
+    /// taşar, bu yüzden sol boşluk daha geniş (gerçek pencerede ölçüldü: 34 pt'te içerik cama yapışık görünüyordu).
+    static var pageLeading: CGFloat { if #available(macOS 26, *) { 54 } else { 34 } }
+    static let pageTrailing: CGFloat = 34
+}
+
+/// Markanın kimlik rengi: marka kimliğinden kararlı biçimde seçilen, uyumlu sekiz renkten biri. Kimliği taşır (avatar, bölüm simgesi,
+/// ince vurgular); eylemler (birincil düğme, seçim) uygulamanın indigo vurgusunda kalır.
+enum BrandTint {
+    /// (açık görünüm, koyu görünüm)
+    static let palette: [(UInt32, UInt32)] = [
+        (0x4E50D8, 0xA5A6FF), (0x0E8F89, 0x5FD3CC), (0xD2601A, 0xFFA066), (0xC23A82, 0xFF8EC4),
+        (0x2F8A4F, 0x7BD99A), (0x2F6FE0, 0x8DB7FF), (0xB8860B, 0xF2C94C), (0x8A4FD8, 0xC7A2FF),
+    ]
+    static func index(_ key: String) -> Int {
+        var h: UInt32 = 5381
+        for u in key.unicodeScalars { h = (h &* 33) &+ u.value }
+        return Int(h % UInt32(palette.count))
+    }
+}
+
+struct BrandTintStyle: ShapeStyle {
+    let key: String
+    func resolve(in environment: EnvironmentValues) -> Color {
+        let pair = BrandTint.palette[BrandTint.index(key)]
+        let hex = environment.colorScheme == .dark ? pair.1 : pair.0
+        return Color(.sRGB, red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
+    }
+}
+
+/// Marka avatarı: harfli kare, markanın renginde (seçiliyken dolu, değilken açık zeminli).
+struct BrandAvatar: View {
+    @Environment(\.colorScheme) private var scheme
+    let name: String
+    var tintKey: String? = nil
+    var selected = false
+    var size: CGFloat = 30
+
+    var body: some View {
+        let initial = String(name.trimmingCharacters(in: .whitespaces).first.map { String($0) } ?? "?").lowercased()
+        let tint: AnyShapeStyle = tintKey.map { AnyShapeStyle(BrandTintStyle(key: $0)) } ?? AnyShapeStyle(Design.accent)
+        let ink: AnyShapeStyle = selected ? AnyShapeStyle(scheme == .dark ? Color(.sRGB, red: 0.1, green: 0.11, blue: 0.15) : Color.white) : tint
+        let fill: AnyShapeStyle = selected ? tint : AnyShapeStyle(tint.opacity(scheme == .dark ? 0.22 : 0.14))
+        Text(initial)
+            .font(.system(size: size * 0.5, weight: .semibold, design: .serif))
+            .foregroundStyle(ink)
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.27, style: .continuous).fill(fill))
+            .accessibilityHidden(true)
+    }
 }
 
 /// Açık/koyu görünüme göre çözülen renk. `NSColor` dinamik sağlayıcısı `ImageRenderer` çiziminde görünüme uymadığı için
@@ -53,11 +120,19 @@ struct AdaptiveColor: ShapeStyle {
     var system: NSColor?
     let light: Palette.RGB
     let dark: Palette.RGB
+    /// "Artırılmış Kontrast" erişilebilirlik ayarı açıkken kullanılan değerler (yoksa normal değerler).
+    var increased: (light: Palette.RGB, dark: Palette.RGB)? = nil
 
     init(_ pair: Palette.Pair) { system = nil; light = pair.light; dark = pair.dark }
-    init(system: NSColor, light: Palette.RGB, dark: Palette.RGB) { self.system = system; self.light = light; self.dark = dark }
+    init(system: NSColor, light: Palette.RGB, dark: Palette.RGB, increased: (light: Palette.RGB, dark: Palette.RGB)? = nil) {
+        self.system = system; self.light = light; self.dark = dark; self.increased = increased
+    }
 
     func resolve(in environment: EnvironmentValues) -> Color {
+        if let increased, environment.colorSchemeContrast == .increased {
+            let c = environment.colorScheme == .dark ? increased.dark : increased.light
+            return Color(.sRGB, red: c.red, green: c.green, blue: c.blue)
+        }
         if let system, !environment.isSnapshot { return Color(nsColor: system) }
         let c = environment.colorScheme == .dark ? dark : light
         return Color(.sRGB, red: c.red, green: c.green, blue: c.blue)
@@ -219,30 +294,39 @@ struct PageScroll<Content: View>: View {
                         .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .topLeading)
                         .background { Color.clear.contentShape(Rectangle()).onTapGesture(perform: backgroundTap) }
                 }
+                .denseScrollEdge()
             }
         } else {
-            ScrollView { content }
+            ScrollView { content }.denseScrollEdge()
         }
     }
 }
 
-/// Boş ve hata durumlarının tek biçimi (U9: her listede aynı): sola hizalı, isteğe bağlı başlık (bölüm stili) + ikincil
-/// renkte tek cümle + isteğe bağlı tek eylem (metin düğmesi). Simge ve kutu yok; konumu çağıran verir.
+/// Boş durumun tek biçimi (0.3.0, Apple'ın `ContentUnavailableView` kalıbı): simge, başlık, açıklama ve isteğe bağlı tek eylem.
+/// Ne yapılacağını söyler; konumu çağıran verir.
 struct EmptyStateView: View {
     var title: String? = nil
     let message: String
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
+    /// SF Symbol (Apple'ın boş durum kalıbı: simge, başlık, açıklama, tek eylem).
+    var symbol = "tray"
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.Space.xs) {
-            if let title { Text(title).font(Design.Font.section) }
-            Text(message).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        VStack(spacing: 10) {
+            Image(systemName: symbol).font(.system(size: 30, weight: .light)).foregroundStyle(.tertiary)
+                .padding(.bottom, 4).accessibilityHidden(true)
+            Text(title ?? message).font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.center)
+            if title != nil {
+                Text(message).font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .lineSpacing(2).fixedSize(horizontal: false, vertical: true).frame(maxWidth: 380)
+            }
             if let actionTitle, let action {
-                Button(actionTitle, action: action).buttonStyle(.text).padding(.horizontal, -Design.Space.xs)
+                Button(actionTitle, action: action).actionSecondary().padding(.top, 6)
             }
         }
-        .padding(.vertical, Design.Space.s)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 200)
+        .padding(.vertical, Design.Space.l)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -435,5 +519,124 @@ struct OptionalDayPicker: View {
                     .accessibilityLabel(title)
             }
         }
+    }
+}
+
+
+/// Birincil eylem düğmesi (tasarım teslimi): dolgulu vurgu, beyaz yazı, 33 pt yükseklik. Ekran başına en çok bir tane.
+struct PrimaryActionStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .medium)).foregroundStyle(.white)
+            .padding(.horizontal, 13).frame(height: 33)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Design.accentFill).opacity(configuration.isPressed || !enabled ? 0.7 : 1))
+    }
+}
+
+/// İkincil eylem düğmesi: çerçeveli.
+struct SecondaryActionStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .medium))
+            .padding(.horizontal, 12).frame(height: 33)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(configuration.isPressed ? AnyShapeStyle(Design.panel) : AnyShapeStyle(Design.windowBackground)))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Design.line))
+    }
+}
+
+extension ButtonStyle where Self == PrimaryActionStyle { static var primaryAction: PrimaryActionStyle { PrimaryActionStyle() } }
+extension ButtonStyle where Self == SecondaryActionStyle { static var secondaryAction: SecondaryActionStyle { SecondaryActionStyle() } }
+
+
+extension View {
+    /// Sayfa yatay kenar boşluğu (sol ve sağ farklı; bkz. `Design.pageLeading`).
+    func pagePadding() -> some View { padding(.leading, Design.pageLeading).padding(.trailing, Design.pageTrailing) }
+
+    /// macOS 26: yoğun listelerde üst kenar efekti sert (okunaklı); eski sürümlerde etkisiz.
+    @ViewBuilder func denseScrollEdge() -> some View {
+        if #available(macOS 26, *) { scrollEdgeEffectStyle(.hard, for: .top) } else { self }
+    }
+
+    /// Birincil eylem: macOS 26'da sistemin cam düğmesi (`glassProminent`), eski sürümde ve ekran çiziminde kendi stilimiz.
+    func actionPrimary() -> some View { modifier(ActionButtonModifier(prominent: true)) }
+    /// İkincil eylem: macOS 26'da `glass`, aksi halde kendi çerçeveli stilimiz.
+    func actionSecondary() -> some View { modifier(ActionButtonModifier(prominent: false)) }
+}
+
+private struct ActionButtonModifier: ViewModifier {
+    @Environment(\.isSnapshot) private var isSnapshot
+    let prominent: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(macOS 26, *), !isSnapshot {
+            // İkincil eylemde cam stili kök vurgu rengini devralıp birincil gibi görünüyordu (gerçek pencerede görüldü): kendi stilimiz.
+            if prominent { content.buttonStyle(.glassProminent).tint(Design.accentFill) } else { content.buttonStyle(.secondaryAction) }
+        } else if prominent {
+            content.buttonStyle(.primaryAction)
+        } else {
+            content.buttonStyle(.secondaryAction)
+        }
+    }
+}
+
+
+extension View {
+    /// Liste satırı zemini: seçiliyken seçim rengi, üzerine gelince hafif vurgu (fare: "uygulama yaşıyor" hissi). Hareketi Azalt'a
+    /// saygılı, yalnız renk geçişi.
+    func rowBackground(selected: Bool, radius: CGFloat = Design.radius) -> some View {
+        modifier(RowBackgroundModifier(selected: selected, radius: radius))
+    }
+}
+
+private struct RowBackgroundModifier: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let selected: Bool
+    let radius: CGFloat
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        let fill: AnyShapeStyle = selected ? AnyShapeStyle(Design.selection) : (hovering ? AnyShapeStyle(Design.panel) : AnyShapeStyle(Color.clear))
+        content
+            .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(fill))
+            .onHover { hovering = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+    }
+}
+
+
+extension View {
+    /// Düz liste (v3, Things/Hatırlatıcılar sakinliği): çerçeve, dolgu, gölge yok; yalnız üstte ve altta ince çizgi. Satırlar arası çizgiyi satırlar koyar.
+    func flatList() -> some View {
+        overlay(alignment: .top) { Rectangle().fill(Design.line).frame(height: 1) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Design.line).frame(height: 1) }
+    }
+
+    /// Gruplanmış yüzey (Ayarlar, Hatırlatıcılar gibi): hafif dolgu, ince çizgi, açık görünümde yumuşak gölge.
+    func card(padding: CGFloat = 0, radius: CGFloat = 14) -> some View { modifier(CardModifier(padding: padding, radius: radius)) }
+}
+
+private struct CardModifier: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    let padding: CGFloat
+    let radius: CGFloat
+    func body(content: Content) -> some View {
+        content
+            .padding(padding)
+            .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Design.panel))
+            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(Design.line))
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .shadow(color: .black.opacity(scheme == .light ? 0.035 : 0), radius: 8, y: 2)
+    }
+}
+
+/// Durum hapı: küçük, yumuşak zeminli etiket (Doğrulanmadı, Yüksek, Bekliyor…). Renk tek başına anlam taşımaz; metin her zaman var.
+struct Pill: View {
+    let text: String
+    var tint: AnyShapeStyle = AnyShapeStyle(.secondary)
+    var body: some View {
+        Text(text).font(.system(size: 10, weight: .medium)).foregroundStyle(tint).lineLimit(1)
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(Capsule().fill(tint.opacity(0.13)))
     }
 }

@@ -10,6 +10,11 @@ struct BrandInfoView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     let brand: Brand
+    /// Sekme olarak gömülü: başlık ve "Kapat" şeridi yok, boyut kapsayıcıdan gelir.
+    var embedded = false
+    /// Hangi bölümler gösterilir: hepsi (sayfa), kişiler ve projeler ya da profil ve AI izinleri (Marka Bilgileri alt sekmeleri).
+    enum Show { case all, people, access }
+    var show: Show = .all
     /// Aynı anda tek satır düzenlenir.
     @State private var profileDraft: Brand?
     @State private var contactDraft: Contact?
@@ -24,18 +29,18 @@ struct BrandInfoView: View {
         VStack(spacing: 0) {
             PageScroll {
                 VStack(alignment: .leading, spacing: Design.Space.l) {
-                    Text(L("Bilgiler")).font(Design.Font.title).accessibilityAddTraits(.isHeader)
-                    profile(current)
-                    permissions(current)
-                    contacts
-                    projects
-                    references
+                    if !embedded { Text(L("Bilgiler")).font(Design.Font.title).accessibilityAddTraits(.isHeader) }
+                    if show != .people { profile(current) }
+                    if show != .people { permissions(current) }
+                    if show != .access { contacts }
+                    if show != .access { projects }
+                    if show != .access { references }
                 }
                 .padding(Design.Space.l)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Divider()
-            HStack {
+            if !embedded { Divider() }
+            if !embedded { HStack {
                 Spacer()
                 // Tek alt düğme: "Kapat" (düzenlenmemişse Enter). Satır düzenlenirken birincil düğme satırdaki "Kaydet";
                 // Esc düzenlemeden vazgeçer, "Kapat" kaydedilmemiş düzenlemeyi bırakıp sayfayı kapatır.
@@ -44,8 +49,9 @@ struct BrandInfoView: View {
                     .keyboardShortcut(isEditing ? nil : KeyboardShortcut.defaultAction)
             }
             .padding(.horizontal, Design.Space.l).padding(.vertical, Design.Space.m)
+            }
         }
-        .frame(minWidth: 560, idealWidth: 620, minHeight: 480, idealHeight: 640)
+        .frame(minWidth: embedded ? 0 : 560, idealWidth: embedded ? nil : 620, minHeight: embedded ? 0 : 480, idealHeight: embedded ? nil : 640)
         .confirmationDialog(L("Kişi silinsin mi?"), isPresented: Binding(get: { deletingContact != nil }, set: { if !$0 { deletingContact = nil } }),
                             presenting: deletingContact) { c in
             Button(L("Kişiyi sil"), role: .destructive) {

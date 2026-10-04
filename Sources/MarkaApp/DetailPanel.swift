@@ -31,7 +31,7 @@ enum PanelTarget: Hashable {
 }
 
 enum Panel {
-    static let width: CGFloat = 360
+    static let width: CGFloat = 420
     /// İş kaydını doğrulayan: Mac kullanıcısının adı.
     static var verifier: String {
         let name = NSFullUserName().trimmingCharacters(in: .whitespaces)
@@ -43,29 +43,39 @@ enum Panel {
 /// (`AppModel.panelTarget`: Bugün, arama, rapor dayanağı) burada karşılanır.
 struct ListWithPanel<List: View>: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selection: PanelTarget?
     @ViewBuilder var list: List
     @FocusState private var panelFocused: Bool
 
     var body: some View {
-        HStack(spacing: 0) {
-            list.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                // Listenin boş yerine tıklamak paneli kapatır (satırlar ve denetimler kendi tıklamalarını alır).
-                .background { Color.clear.contentShape(Rectangle()).onTapGesture { selection = nil } }
-            if let target = selection {
-                Rectangle().fill(Design.line).frame(width: 1)
-                DetailPanel(target: target)
-                    .environment(\.panelClose) { selection = nil }
-                    .frame(width: Panel.width)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .focusable()
-                    .focusEffectDisabled()
-                    .focused($panelFocused)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityAction(.escape) { selection = nil }
-                    .accessibilityAction(named: L("Paneli kapat")) { selection = nil }
+        // Ayrıntı paneli listenin ÜSTÜNE kayan bir katmandır (yan yana değil): orta sütun terminal açıkken dardır ve yan yana
+        // yerleşim listeyi ezip paneli terminalin altına taşırıyordu (gerçek pencerede görüldü).
+        GeometryReader { geo in
+            ZStack(alignment: .trailing) {
+                list.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    // Listenin boş yerine tıklamak paneli kapatır (satırlar ve denetimler kendi tıklamalarını alır).
+                    .background { Color.clear.contentShape(Rectangle()).onTapGesture { selection = nil } }
+                if let target = selection {
+                    DetailPanel(target: target)
+                        .environment(\.panelClose) { selection = nil }
+                        .frame(width: min(Panel.width, max(300, geo.size.width - 48)))
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .background(Design.windowBackground)
+                        .overlay(alignment: .leading) { Rectangle().fill(Design.line).frame(width: 1) }
+                        .shadow(color: .black.opacity(0.14), radius: 20, x: -6, y: 0)
+                        .focusable()
+                        .focusEffectDisabled()
+                        .focused($panelFocused)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityAction(.escape) { selection = nil }
+                        .accessibilityAction(named: L("Paneli kapat")) { selection = nil }
+                        // Panel sağdan kayarak açılır; "Hareketi Azalt" açıksa yalnız solar.
+                        .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
+                }
             }
         }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: selection == nil)
         .onExitCommand { selection = nil }
         .onChange(of: selection) { _, new in panelFocused = new != nil }
         .onAppear(perform: takeTarget)
@@ -103,7 +113,7 @@ struct DetailPanel: View {
                 }
             }
             // Üst boşluk listenin ilk satırıyla aynı hizada (liste üstte Space.s ile başlar).
-            .padding(.horizontal, Design.Space.l).padding(.top, Design.Space.s).padding(.bottom, Design.Space.l)
+            .padding(.horizontal, 28).padding(.top, 20).padding(.bottom, Design.Space.l)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -117,18 +127,25 @@ struct DetailPanel: View {
     }
 }
 
-/// Panelin üst satırı: tür · durum (ek stil) ve sağda küçük "Kapat" (Esc ve boş yere tıklama da kapatır).
+/// Panelin üst satırı: tür · durum (ek stil) ve sağda çerçeveli kapatma düğmesi (Esc ve boş yere tıklama da kapatır).
 struct PanelHeader: View {
     @Environment(\.panelClose) private var close
     let caption: String
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Design.Space.s) {
-            Text(caption).captionStyle().lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+        HStack(alignment: .center, spacing: Design.Space.s) {
+            Text(caption).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
             if let close {
-                Button(L("Kapat"), action: close).buttonStyle(.text).font(Design.Font.caption)
-                    .help(L("Paneli kapat (Esc)"))
+                Button(action: close) {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Design.line))
+                }
+                .buttonStyle(.plain)
+                .help(L("Paneli kapat (Esc)"))
+                .accessibilityLabel(L("Kapat"))
             }
         }
+        .padding(.bottom, Design.Space.s)
     }
 }
 
@@ -188,6 +205,27 @@ struct PanelField: View {
                     .onChange(of: focused) { _, now in if !now { commit() } }
                     .modifier(HoverHighlight(enabled: !focused))
             }
+        }
+    }
+}
+
+/// Panelin büyük başlığı: çerçevesiz, yerinde düzenlenir (Enter ya da odak ayrılınca kaydeder). Ekran çiziminde düz metin.
+struct PanelTitleField: View {
+    @Environment(\.isSnapshot) private var isSnapshot
+    @Binding var text: String
+    let commit: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        if isSnapshot {
+            Text(text).font(.system(size: 22, weight: .semibold)).tracking(-0.4).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            TextField(L("Başlık"), text: $text, axis: .vertical)
+                .textFieldStyle(.plain).font(.system(size: 22, weight: .semibold)).tracking(-0.4).lineLimit(1...3)
+                .focused($focused).onSubmit(commit)
+                .onChange(of: focused) { _, now in if !now { commit() } }
+                .accessibilityLabel(L("Başlık"))
         }
     }
 }
@@ -282,14 +320,20 @@ struct TaskPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.m) {
             PanelHeader(caption: L("Görev") + " · " + task.status.title)
-            PanelField(title: L("Başlık"), text: $title, commit: commit)
+            PanelTitleField(text: $title, commit: commit).padding(.bottom, Design.Space.xs)
             PanelField(title: L("Notlar"), text: $notes, multiline: true, commit: commit)
             // İptal durum menüsünde değil; açık görevde panelin altında "İptal et".
             let statuses = TaskStatus.allCases.filter { $0 != .cancelled }
-            StatusMenu(current: task.status.title, options: statuses.map(\.title)) { i in save { $0.status = statuses[i] } }
-            OptionalDayPicker(title: L("Son tarih"), day: Binding(get: { task.dueDate }, set: { d in save { $0.dueDate = d } }))
-            PanelField(title: L("Sorumlu"), text: $assignee, commit: commit)
+            VStack(alignment: .leading, spacing: 14) {
+                StatusMenu(current: task.status.title, options: statuses.map(\.title)) { i in save { $0.status = statuses[i] } }
+                OptionalDayPicker(title: L("Son tarih"), day: Binding(get: { task.dueDate }, set: { d in save { $0.dueDate = d } }))
+                PanelField(title: L("Sorumlu"), text: $assignee, commit: commit)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card(padding: 16)
             if task.status.isOpen {
+                Button { save { $0.status = .done } } label: { Label(L("Tamamlandı olarak işaretle"), systemImage: "checkmark").labelStyle(.titleAndIcon) }
+                    .actionPrimary().padding(.top, Design.Space.s)
                 OpenItemActions(title: task.title, isTask: true, deleting: $deleting,
                                 cancel: { save { $0.status = .cancelled } },
                                 delete: {

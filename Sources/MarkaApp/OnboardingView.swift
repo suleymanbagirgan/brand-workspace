@@ -7,26 +7,48 @@ import SwiftUI
 struct OnboardingView: View {
     @Environment(AppModel.self) private var app
     @State private var name = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Design.Space.m) {
-            Text(L("Marka Çalışma Alanı")).font(Design.Font.title).accessibilityAddTraits(.isHeader)
-            Text(L("Bir markaya bakınca ne yapıldığını, ne beklediğini ve müşteriye ne gideceğini gör."))
-                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            InputField(title: L("İlk markanın adı"), text: $name)
-                .padding(.top, Design.Space.s)
-                .onSubmit(start)
-            HStack {
-                Spacer()
-                Button(L("Başla"), action: start)
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+        VStack(spacing: 28) {
+            VStack(spacing: 10) {
+                Image(systemName: "square.stack.3d.up.fill").font(.system(size: 40)).foregroundStyle(Design.accent)
+                    .accessibilityHidden(true)
+                Text(L("Workspace AI'a hoş geldin")).font(.system(size: 26, weight: .bold)).tracking(-0.5)
+                    .multilineTextAlignment(.center).accessibilityAddTraits(.isHeader)
+                Text(L("Bir markaya bakınca ne yapıldığını, ne beklediğini ve müşteriye ne gideceğini gör."))
+                    .font(.system(size: 14)).foregroundStyle(.secondary).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(alignment: .leading, spacing: 18) {
+                point("sparkles", L("Asistana sor"), L("Yapay zekâ markanın görev, not ve dosyalarını okur; ne yapman gerektiğini söyler ve görev önerir."))
+                point("checkmark.seal", L("Burada onayla"), L("Asistanın önerdiği işler seni bekler. Onaylamadığın hiçbir şey kayda girmez."))
+                point("doc.text", L("Müşteriye raporla"), L("Haftalık rapor, doğrulanmış işlerden tek tıkla PDF olur."))
+                point("lock", L("Verin sende kalır"), L("Her şey bu Mac'te durur. Yapay zekâ yalnızca senin izin verdiğin yerde çalışır."))
+            }
+            VStack(spacing: 12) {
+                InputField(title: L("İlk markanın adı"), text: $name, focus: $focused)
+                    .onSubmit(start).onAppear { DispatchQueue.main.async { focused = true } }
+                Button(action: start) { Text(L("Başla")).frame(maxWidth: .infinity) }
+                    .actionPrimary().keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .frame(width: 420)
+        .frame(width: 440)
         .padding(Design.Space.l)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Design.windowBackground)
+    }
+
+    private func point(_ symbol: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: symbol).font(.system(size: 16, weight: .medium)).foregroundStyle(Design.accent).frame(width: 28, height: 28)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     func start() {

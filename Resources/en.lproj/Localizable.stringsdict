@@ -67,22 +67,6 @@
 			<string>%1$d tasks</string>
 		</dict>
 	</dict>
-	<key>%d biten görev rapora girmedi (iş kaydı yok)</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@n@</string>
-		<key>n</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>d</string>
-			<key>one</key>
-			<string>%d finished task left out of the report (no work log)</string>
-			<key>other</key>
-			<string>%d finished tasks left out of the report (no work log)</string>
-		</dict>
-	</dict>
 	<key>%d bozuk olay satırı atlandı</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -195,22 +179,6 @@
 			<string>%d work logs</string>
 		</dict>
 	</dict>
-	<key>%d iş kaydı doğrulanmadı</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@n@</string>
-		<key>n</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>d</string>
-			<key>one</key>
-			<string>%d work log not verified</string>
-			<key>other</key>
-			<string>%d work logs not verified</string>
-		</dict>
-	</dict>
 	<key>%d kaynaklı iddia</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -241,6 +209,22 @@
 			<string>%d note</string>
 			<key>other</key>
 			<string>%d notes</string>
+		</dict>
+	</dict>
+	<key>%d onay seni bekliyor</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d approval is waiting for you</string>
+			<key>other</key>
+			<string>%d approvals are waiting for you</string>
 		</dict>
 	</dict>
 	<key>%d sonuç</key>
