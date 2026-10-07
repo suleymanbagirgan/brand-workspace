@@ -28,7 +28,7 @@ Ana boşluk: AI yalnızca 7 şey önerebiliyor; uygulamada ise onlarca eylem var
 1. **Terminal kalktı → App Store mümkün.** Hedef: Mac App Store, sandbox içinde.
 2. **Codex CLI süreci Mac App Store sürümünde yok.** Sandbox içinde rastgele ikili çalıştırmak uygun değil. Codex yalnız doğrudan (App Store dışı) dağıtım yapılırsa kalır. Bunu satış metninde vaat etmeyiz.
 3. **Sparkle yok.** MAS'ta güncelleme yalnız Mac App Store'dan.
-4. **Birincil sağlayıcı: Anthropic, kullanıcının kendi anahtarı (BYOK).** İkincisi: Apple Foundation Models (macOS 26, cihaz üstü, veri Mac'ten çıkmaz). Her ikisi aynı `AIProvider` protokolü arkasında.
+4. **Birincil sağlayıcı: Anthropic, kullanıcının kendi anahtarı (BYOK).** İkincisi: Apple Foundation Models (macOS 26, cihaz üstü; bu sağlayıcıda içerik üçüncü tarafa gitmez). Her ikisi aynı `AIProvider` protokolü arkasında.
 5. **Madde 5.1.2(i):** İçerik üçüncü taraf AI'ya gitmeden önce açık, markaya özel izin ekranı (bugün marka başına izin var; metni "ne gider, kime gider" diye netleştirilecek) ve App Privacy etiketi.
 6. **AI hiçbir zaman doğrudan yazmaz.** Yeni "güvenli eylem" kademesi bile yalnız kullanıcının **önceden, eylem türü başına** verdiği izinle ve yine geri alınabilir olur.
 7. Abonelik/ödeme, yayın, imzalama: kurucu "sonra" dedi. Plan bunları son aşamaya koyar, ama mimari (sandbox, gizlilik) baştan uyumlu kurulur.
@@ -107,6 +107,8 @@ Her aşama sonunda: `scripts/test.sh` + `scripts/build-app.sh` + `python3 script
 ## 6. Başlangıç sırası
 
 1. F1'in ilk dilimi: `AppAction` protokolü + 3 eylem (görev düzenle, tarih değiştir, zamanlayıcı) + AI aracı olarak açma + testler. Küçük başla, mimariyi tek dikey dilimle kanıtla.
+   **Durum (2026-10-04): ilk dilim yapıldı.** `Sources/MarkaCore/Actions/AppAction.swift`: `AppAction`/`TaskEditAction`, risk kademesi, `ActionPreview` (alan bazında önce/sonra), `UndoRecord`, `ActionRegistry`; eylemler `task.reschedule` (+ "N gün ertele" yardımcısı), `task.rename`, `task.setStatus` (hepsi `needsApproval`). Yeni öneri türü `updateTask` (onayla eylem kaydından uygulanır, önceki değerler öneriye yazılır, geri alınır; kullanıcı sonradan düzenlediyse geri alma reddedilir). AI aracı `gorev_guncelle_oner` yalnız öneri üretir. Onay sayfası "Son tarih: 12 Eki → 15 Eki" satırını gösterir (MARKA_SNAPSHOT çiziminde görüldü). 18 test (`EylemKaydiTests`).
+   **Yapılmadı:** zamanlayıcı eylemi; mevcut 7 öneri türünün kayda taşınması; ⌘K'nin kayıttan türemesi; tarihi kaldırma önerisi (eylem destekler, araç desteklemez). **Doğrulanmadı:** gerçek pencere, canlı yapay zekâ yanıtı (araç gerçek modelle denenmedi).
 2. Dilim çalışınca kalan eylemleri taşı.
 3. F2.
 

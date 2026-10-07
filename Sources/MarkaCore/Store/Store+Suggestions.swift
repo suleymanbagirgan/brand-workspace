@@ -38,12 +38,14 @@ extension AIProposal {
     public var suggestionOrder: Int {
         switch kind {
         case .createTask: 0
-        case .completeTask: 1
+        case .completeTask, .updateTask: 1
         case .createBrandRecord: 2
         case .createNote: 3
         case .createOutput: 4
         case .createWorkLog: 5
         case .wikiRevision: 6
+        case .createTeamMember: 7
+        case .createObservation: 8
         }
     }
 }
@@ -152,7 +154,7 @@ extension Store {
             var x = try decode(ProposalPayload.CreateNote.self, p.payloadJSON)
             if let t { x.title = t }
             return Self.json(x) ?? p.payloadJSON
-        case .completeTask, .createOutput, .wikiRevision:
+        case .completeTask, .updateTask, .createOutput, .wikiRevision, .createTeamMember, .createObservation:
             return p.payloadJSON
         }
     }

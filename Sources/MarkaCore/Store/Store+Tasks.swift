@@ -2,12 +2,45 @@ import Foundation
 import GRDB
 
 extension Store {
-    public func tasks(brandId: String?, statuses: [TaskStatus]? = nil) throws -> [WorkTask] {
+    /// Markanın `since` tarihinden beri biten görev sayısı (iş kaydı bağlı olsun olmasın). Özet kutucuğu bunu gösterir.
+    public func completedTaskCount(brandId: String, since: Date) throws -> Int {
+        try read { db in
+            try WorkTask.filter(Column("brandId") == brandId && Column("status") == TaskStatus.done.rawValue
+                                && Column("completedAt") >= since).fetchCount(db)
+        }
+    }
+
+    /// "Bu hafta biten görev" (`CountDefinitions.isDoneInWeek` ile aynı tanım, SQL'de): Özet ve Bugün kutucukları aynı sayıyı verir.
+    public func completedTaskCount(brandId: String, week: DateInterval) throws -> Int {
+        try read { db in
+            try WorkTask.filter(Column("brandId") == brandId && Column("status") == TaskStatus.done.rawValue
+                                && Column("completedAt") >= week.start && Column("completedAt") < week.end).fetchCount(db)
+        }
+    }
+
+    /// Görevler `WorkTask.displayOrder` sırasıyla. `limit`: yalnız ilk `limit` görev (sıralama ve kesme SQL'de yapılır; binlerce
+    /// görevi çözmeden kenar paneli gibi kısa listeler için).
+    public func tasks(brandId: String?, statuses: [TaskStatus]? = nil, limit: Int? = nil) throws -> [WorkTask] {
         try read { db in
             var q = WorkTask.all()
             if let brandId { q = q.filter(Column("brandId") == brandId) }
             if let statuses { q = q.filter(statuses.map(\.rawValue).contains(Column("status"))) }
+            // SQL sırası `displayOrder` ile aynıdır (eşitlikte satır sırası); Swift sıralaması önceden sıralı girdide doğrusal
+            // kalır ve sonucun tanımı tek yerde (`displayOrder`) durur.
+            q = q.order(sql: WorkTask.displayOrderSQL)
+            if let limit { q = q.limit(max(limit, 0)) }
             return try q.fetchAll(db).sorted(by: WorkTask.displayOrder)
+        }
+    }
+
+    /// Marka kimliği → açık görev sayısı (yalnız sıfırdan büyükler). Marka başına görev listesi çözmeden tek gruplu sorgu.
+    public func openTaskCounts() throws -> [String: Int] {
+        try read { db in
+            let open = TaskStatus.allCases.filter(\.isOpen).map(\.rawValue)
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT brandId, COUNT(*) AS n FROM workTask WHERE status IN (\(open.map { _ in "?" }.joined(separator: ","))) GROUP BY brandId
+                """, arguments: StatementArguments(open))
+            return Dictionary(uniqueKeysWithValues: rows.map { ($0["brandId"] as String, $0["n"] as Int) })
         }
     }
 
@@ -24,11 +57,14 @@ extension Store {
         return try writer.write { db in try saveTask(db, task, actor: actor) }
     }
 
-    func saveTask(_ db: Database, _ task: WorkTask, actor: Actor) throws -> WorkTask {
+    /// `auditAction`: denetim olayının eylem adı (eylem kaydından gelen yazmada eylem kimliği, ör. `task.reschedule`); `nil`: create/update.
+    func saveTask(_ db: Database, _ task: WorkTask, actor: Actor, auditAction: String? = nil) throws -> WorkTask {
         if let pid = task.projectId {
             guard let p = try Project.fetchOne(db, key: pid), p.brandId == task.brandId else { throw MarkaError.brandScope }
         }
         let before = try WorkTask.fetchOne(db, key: task.id)
+        // Kimlik çakışmasıyla başka markanın görevi bu markaya taşınamaz (H2-06).
+        if let before, before.brandId != task.brandId { throw MarkaError.brandScope }
         var t = task
         t.title = t.title.trimmed
         t.updatedAt = Date()
@@ -39,7 +75,7 @@ extension Store {
         if before != nil { t.timeSpentSeconds = try Self.sumSeconds(db, taskId: t.id) }
         try t.save(db)
         try audit(db, actor: actor, brandId: t.brandId, entity: "task", entityId: t.id,
-                  action: before == nil ? "create" : "update", before: before, after: t)
+                  action: auditAction ?? (before == nil ? "create" : "update"), before: before, after: t)
         return t
     }
 
@@ -49,9 +85,16 @@ extension Store {
         try saveTask(t, actor: actor)
     }
 
+    /// Süre kaydı olan görev silinmez (U-01): şema süre kaydını görevle birlikte siler (`onDelete: .cascade`), faturalık
+    /// süre ve rapordaki "Harcanan süre" sessizce kaybolurdu. Bu görevler iptal edilir; süre kayıtları kalır.
     public func deleteTask(_ id: String) throws {
         try writer.write { db in
             guard let t = try WorkTask.fetchOne(db, key: id) else { return }
+            let time = try Self.timeSummary(db, taskId: id)
+            guard time.count == 0 else {
+                throw MarkaError.validation(LF("Bu görevde süre kaydı var; silinirse süreler de kaybolur. Görevi iptal et, süre kayıtları korunur. Süre: %@",
+                                               DurationFormat.short(time.seconds)))
+            }
             try t.delete(db)
             try audit(db, actor: .user, brandId: t.brandId, entity: "task", entityId: id, action: "delete",
                       before: t, after: WorkTask?.none)
@@ -154,6 +197,18 @@ extension WorkTask {
         if a.priority != b.priority { return a.priority > b.priority }
         return a.createdAt < b.createdAt
     }
+
+    /// `displayOrder`'ın SQL karşılığı (tarihler GRDB'de milisaniyeli metin olarak saklanır; sözlük sırası = zaman sırası).
+    /// Eşitlikte `rowid`: kararlı sıralama sonucu belirlenimli kalır.
+    static let displayOrderSQL = """
+        (status IN ('done','cancelled')),
+        CASE WHEN status NOT IN ('done','cancelled') THEN dueDate IS NULL END,
+        CASE WHEN status NOT IN ('done','cancelled') THEN dueDate END,
+        CASE WHEN status NOT IN ('done','cancelled') THEN priority END DESC,
+        CASE WHEN status NOT IN ('done','cancelled') THEN createdAt END,
+        CASE WHEN status IN ('done','cancelled') THEN COALESCE(completedAt, updatedAt) END DESC,
+        rowid
+        """
 
     public func isOverdue(today: String) -> Bool {
         guard status.isOpen, let dueDate else { return false }

@@ -1,0 +1,63 @@
+{
+  "adimlar" : [
+    {
+      "ad" : "Yeni marka aç",
+      "cikti" : "marka açıldı: Deneme Yangın",
+      "eylem" : "markaAc",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 1
+    },
+    {
+      "ad" : "Kaynak ekle",
+      "cikti" : "kaynak eklendi: Teklif talebi",
+      "eylem" : "kaynakEkle",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 2
+    },
+    {
+      "ad" : "Asistan görev önersin",
+      "cikti" : "araçlar: kaynak_ara → gorev_oner; reddedilen: yok; bekleyen öneri: 1",
+      "eylem" : "asistan",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 3
+    },
+    {
+      "ad" : "Öneriyi onayla",
+      "cikti" : "onaylandı: createTask",
+      "eylem" : "onayla",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 4
+    },
+    {
+      "ad" : "Onayı geri al",
+      "cikti" : "geri alındı: createTask",
+      "eylem" : "geriAl",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 5
+    },
+    {
+      "ad" : "Elle iş kaydı yaz",
+      "cikti" : "iş kaydı yazıldı ve doğrulandı: Teklif taslağı hazırlandı",
+      "eylem" : "isKaydiYaz",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 6
+    },
+    {
+      "ad" : "Raporda madde görünsün",
+      "cikti" : "rapor taslağı: completedWork=1, deliverables=0, openIssues=0, awaitingClient=0, timeSpent=0, nextSteps=0; uyarı=0",
+      "eylem" : "raporOlustur",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 7
+    }
+  ],
+  "gecti" : true,
+  "neden" : "tüm adımlar tuttu",
+  "yolculuk" : "yeni-marka-gorev-onayla-geri-al-rapor"
+}

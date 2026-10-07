@@ -1,0 +1,23 @@
+{
+  "ad": "yeni-marka-gorev-onayla-geri-al-rapor",
+  "aciklama": "Yeni marka açılır, kaynak eklenir, asistan görev önerir, onaylanır, geri alınır; sonra elle iş kaydı yazılır ve raporda en az bir madde görünür.",
+  "adimlar": [
+    { "ad": "Yeni marka aç", "eylem": "markaAc", "etiket": "A", "baslik": "Deneme Yangın" },
+    { "ad": "Kaynak ekle", "eylem": "kaynakEkle", "marka": "A", "etiket": "teklif", "baslik": "Teklif talebi",
+      "metin": "42 yangın dolabı için teklif istendi. Teslim Kasım sonu.", "bekle": { "kaynakSayisi": 1 } },
+    { "ad": "Asistan görev önersin", "eylem": "asistan", "marka": "A", "istem": "Bu hafta ne yapmalıyım?",
+      "betik": [
+        [ { "metin": "Kaynaklara bakıyorum." }, { "arac": "kaynak_ara", "girdi": { "sorgu": "teklif" } } ],
+        [ { "arac": "gorev_oner", "girdi": { "baslik": "42 yangın dolabı teklifini hazırla", "oncelik": 2 } } ],
+        [ { "metin": "Bir görev önerdim; onayını bekliyor." } ]
+      ],
+      "bekle": { "araclar": ["kaynak_ara", "gorev_oner"], "hataliAraclar": [], "bekleyenOneri": 1, "uygulanmisOneri": 0, "gorevSayisi": 0 } },
+    { "ad": "Öneriyi onayla", "eylem": "onayla", "marka": "A", "tur": "createTask",
+      "bekle": { "bekleyenOneri": 0, "uygulanmisOneri": 1, "gorevSayisi": 1, "gorevBasliklari": ["42 yangın dolabı teklifini hazırla"] } },
+    { "ad": "Onayı geri al", "eylem": "geriAl", "marka": "A", "tur": "createTask",
+      "bekle": { "uygulanmisOneri": 0, "geriAlinanOneri": 1, "gorevSayisi": 0 } },
+    { "ad": "Elle iş kaydı yaz", "eylem": "isKaydiYaz", "marka": "A", "baslik": "Teklif taslağı hazırlandı",
+      "metin": "Teklif metni yazıldı.", "kaynaklar": ["teklif"], "bekle": { "isKaydiSayisi": 1 } },
+    { "ad": "Raporda madde görünsün", "eylem": "raporOlustur", "marka": "A", "bekle": { "raporMaddeEnAz": 1 } }
+  ]
+}

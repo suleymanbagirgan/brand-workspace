@@ -54,7 +54,7 @@ Hedef: ürün son tüketiciye gidecek; ilk izlenim ve ana ekran Apple kalitesind
   çizemediği için yalnız orada eski başlık/sekmeler gösterilir. **Gerçek pencerede doğrulanmadı.**
 - **Bugün ana ekranı:** saate göre selamlama, tarih, dört özet kutucuğu (onay bekleyen, geciken, bu hafta yapılan, karar bekleyen; sayı + simge + dokununca
   ilgili yere gider), altında ayrıntı listeleri.
-- **İlk açılış:** karşılayıcı tek ekran: simge, başlık, dört değer cümlesi (terminalde çalış, burada onayla, müşteriye raporla, verin sende kalır), marka adı,
+- **İlk açılış:** karşılayıcı tek ekran: simge, başlık, dört değer cümlesi (terminalde çalış, burada onayla, müşteriye raporla, veriler yerel saklanır), marka adı,
   tam genişlik birincil düğme.
 
 ## Dördüncü tur: ortak geliştirici ve tasarımcı brief'i
@@ -68,7 +68,7 @@ Yapılanlar: satırlarda fare üstü vurgusu (Hareketi Azalt'a saygılı), Akı�
 renkleri koyulaşır (`colorSchemeContrast`), ikon-yalnız düğmelere erişilebilirlik etiketi (15 → 25 etiket), isteğe bağlı **menü çubuğu simgesi** (bekleyen onay
 sayısı, markaya göre onay listesi; Ayarlar › Genel'den açılır, varsayılan kapalı; açıkken pencere kapansa da uygulama yaşar).
 Sıradaki aday: **cihaz üstü özet** (`FoundationModels`, macOS 26, `#available` ve model durumu denetimiyle): rapor özetini üçüncü taraf sağlayıcıya göndermeden
-yazmak "verin sende kalır" sözüyle örtüşür. Gerçek cihazda model kullanılabilirliği doğrulanmadı.
+yazmak "veriler yerel saklanır" sözüyle örtüşür. Gerçek cihazda model kullanılabilirliği doğrulanmadı.
 
 ## Beşinci tur: gerçek pencere doğrulaması (2 Eki)
 Ekran Kaydı izni verildi; `scripts/pencere-goruntu.sh` (geçici veri alanı + örnek veri, yalnız kendi PID'sinin penceresini yakalar) ile uygulamanın GERÇEK penceresi

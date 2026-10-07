@@ -47,4 +47,19 @@ import Testing
         }
         #expect(throws: (any Error).self) { try store.setProfileSection(brandId: "yok", .scope, body: "x") }
     }
+
+    @Test func bolumunSonYazilmaZamaniBilinirSilinincedenYoktur() throws {
+        let store = try makeStore()
+        let a = try store.createBrand(name: "A")
+        let b = try store.createBrand(name: "B")
+        #expect(try store.profileUpdatedAt(brandId: a.id).isEmpty)
+        let before = Date().addingTimeInterval(-1)
+        try store.setProfileSection(brandId: a.id, .audience, body: "Fabrika yöneticileri")
+        try store.setProfileSection(brandId: b.id, .voice, body: "Sade")
+        let dates = try store.profileUpdatedAt(brandId: a.id)
+        #expect(dates.keys.sorted { $0.rawValue < $1.rawValue } == [.audience])
+        #expect((dates[.audience] ?? .distantPast) >= before)
+        try store.setProfileSection(brandId: a.id, .audience, body: "")
+        #expect(try store.profileUpdatedAt(brandId: a.id).isEmpty)
+    }
 }

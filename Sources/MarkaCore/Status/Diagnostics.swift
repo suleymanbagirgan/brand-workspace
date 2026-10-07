@@ -160,6 +160,7 @@ public final class DiagnosticsLog: @unchecked Sendable {
         cache.append(entry)
         if cache.count > Self.capacity { cache.removeFirst(cache.count - Self.capacity) }
         guard let url else { return }
+        // Bilinçli yutma: tanı günlüğü kendi yazma hatasını kaydedemez; kayıt bellekte kalır, bir sonraki kayıtta yeniden yazılır.
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let data = try? Self.encoder.encode(cache) { try? data.write(to: url, options: .atomic) }
     }
@@ -271,7 +272,9 @@ public enum DiagnosticReport {
     public static let recentErrorLimit = 20
 
     /// Panoya kopyalanacak düz metin. Saf fonksiyon: yalnızca girdiyi biçimler, hiçbir şey okumaz.
-    public static func render(_ s: DiagnosticSnapshot, now: Date) -> String {
+    /// `breadcrumbs`: hatadan önceki içeriksiz son adımlar (E-05, `Breadcrumbs`); en çok `Breadcrumbs.capacity` tanesi yazılır.
+    /// `turns`: son asistan turlarının içeriksiz izi (E-30, `TurnTraces`); en çok `TurnTraces.capacity` tanesi yazılır.
+    public static func render(_ s: DiagnosticSnapshot, now: Date, breadcrumbs: [Breadcrumb] = [], turns: [TurnTrace] = []) -> String {
         let iso = ISO8601DateFormatter()
         let recent = s.errors.suffix(recentErrorLimit).reversed()
         var lines = [
@@ -289,6 +292,16 @@ public enum DiagnosticReport {
         ]
         if recent.isEmpty { lines.append("  —") }
         lines += recent.map { "  " + $0.line }
+        // Son adımlar: kırıntı kurulurken süzülür; burada da yalnız izinli alanlar yazılır (`Breadcrumb.line`).
+        let steps = breadcrumbs.filter { !$0.fields.isEmpty }.suffix(Breadcrumbs.capacity).reversed()
+        lines.append("son_adimlar (\(steps.count), yeniden eskiye):")
+        if steps.isEmpty { lines.append("  —") }
+        lines += steps.map { "  " + $0.line }
+        // Son turlar (E-30): yalnız sağlayıcı türü, süre, sonuç türü, araç ADI sayacı, öneri ve belirteç sayısı (`TurnTrace.line`).
+        let recentTurns = turns.suffix(TurnTraces.capacity).reversed()
+        lines.append("son_turlar (\(recentTurns.count), yeniden eskiye):")
+        if recentTurns.isEmpty { lines.append("  —") }
+        lines += recentTurns.map { "  " + $0.line }
         lines.append("")
         lines.append(s.metrics?.shareableSummary ?? "beta ölçümleri: çalışma alanı açık değil")
         return lines.joined(separator: "\n")

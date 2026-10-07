@@ -1,3 +1,5 @@
+#if !MAS
+// Codex alt süreç ortamı: Mac App Store derlemesinde (`-DMAS`) yoktur (sandbox geçişi S2).
 import Foundation
 
 /// Alt süreçlere (marka terminali, Codex App Server) aktarılan ortam. Uygulama API anahtarı tanımlı bir kabuktan
@@ -14,3 +16,4 @@ public enum ChildEnvironment {
     /// Uygulamanın kendi ortamından süzülmüş kopya.
     public static var current: [String: String] { sanitized(ProcessInfo.processInfo.environment) }
 }
+#endif

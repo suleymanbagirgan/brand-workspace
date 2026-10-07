@@ -1,0 +1,47 @@
+{
+  "adimlar" : [
+    {
+      "ad" : "Marka aç",
+      "cikti" : "marka açıldı: Deneme Yangın",
+      "eylem" : "markaAc",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 1
+    },
+    {
+      "ad" : "Görev ekle",
+      "cikti" : "görev eklendi: Teklifi gönder",
+      "eylem" : "gorevEkle",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 2
+    },
+    {
+      "ad" : "Asistan erteleme önersin",
+      "cikti" : "araçlar: gorev_guncelle_oner; reddedilen: yok; bekleyen öneri: 1",
+      "eylem" : "asistan",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 3
+    },
+    {
+      "ad" : "Ertelemeyi onayla",
+      "cikti" : "onaylandı: updateTask",
+      "eylem" : "onayla",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 4
+    },
+    {
+      "ad" : "Ertelemeyi geri al",
+      "cikti" : "geri alındı: updateTask",
+      "eylem" : "geriAl",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 5
+    }
+  ],
+  "gecti" : true,
+  "neden" : "tüm adımlar tuttu",
+  "yolculuk" : "gorev-erteleme-onayla-geri-al"
+}

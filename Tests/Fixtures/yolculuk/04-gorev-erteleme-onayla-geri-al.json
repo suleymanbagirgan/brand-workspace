@@ -1,0 +1,19 @@
+{
+  "ad": "gorev-erteleme-onayla-geri-al",
+  "aciklama": "Var olan görevin son tarihini erteleme önerisi onaylanır ve geri alınır; görev sayısı değişmez.",
+  "adimlar": [
+    { "ad": "Marka aç", "eylem": "markaAc", "etiket": "A", "baslik": "Deneme Yangın" },
+    { "ad": "Görev ekle", "eylem": "gorevEkle", "marka": "A", "etiket": "teklif-gonder", "baslik": "Teklifi gönder",
+      "sonTarih": "2026-11-20", "bekle": { "gorevSayisi": 1 } },
+    { "ad": "Asistan erteleme önersin", "eylem": "asistan", "marka": "A", "istem": "Teklifi bir hafta ertele",
+      "betik": [
+        [ { "arac": "gorev_guncelle_oner", "girdi": { "gorev_id": "@gorev:teklif-gonder", "son_tarih": "2026-11-27" } } ],
+        [ { "metin": "Erteleme önerildi." } ]
+      ],
+      "bekle": { "araclar": ["gorev_guncelle_oner"], "bekleyenOneri": 1, "uygulanmisOneri": 0, "gorevSayisi": 1 } },
+    { "ad": "Ertelemeyi onayla", "eylem": "onayla", "marka": "A", "tur": "updateTask",
+      "bekle": { "bekleyenOneri": 0, "uygulanmisOneri": 1, "gorevSayisi": 1 } },
+    { "ad": "Ertelemeyi geri al", "eylem": "geriAl", "marka": "A", "tur": "updateTask",
+      "bekle": { "uygulanmisOneri": 0, "geriAlinanOneri": 1, "gorevSayisi": 1 } }
+  ]
+}

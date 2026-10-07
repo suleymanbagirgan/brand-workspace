@@ -3,10 +3,17 @@ import Foundation
 /// Yapılandırılmış AI görevleri için sağlayıcı seçimi.
 public enum StructuredProvider: Sendable {
     case anthropic(AnthropicClient)
+    #if !MAS
     case codex(CodexAppServer, model: String, cwd: URL)
+    #endif
 
     var kind: AIProviderKind {
-        switch self { case .anthropic: .anthropic; case .codex: .codex }
+        switch self {
+        case .anthropic: .anthropic
+        #if !MAS
+        case .codex: .codex
+        #endif
+        }
     }
 
     func completeJSON(system: String, user: String, schema: JSONValue) async throws -> (JSONValue, UsageEntry) {
@@ -16,11 +23,13 @@ public enum StructuredProvider: Sendable {
             let cost = PriceTable.costMicros(model: r.model, input: r.inputTokens, output: r.outputTokens, cacheRead: r.cacheReadTokens, cacheWrite: r.cacheWriteTokens)
             return (json, UsageEntry(provider: .anthropic, model: r.model, sessionId: nil, brandId: nil, purpose: "", inputTokens: r.inputTokens,
                                      outputTokens: r.outputTokens, cacheReadTokens: r.cacheReadTokens, cacheWriteTokens: r.cacheWriteTokens, costMicros: cost))
+        #if !MAS
         case .codex(let server, let model, let cwd):
             try await server.start()
             let (json, input, output) = try await server.completeJSON(cwd: cwd, model: model, instructions: system, prompt: user, schema: schema)
             return (json, UsageEntry(provider: .codex, model: model, sessionId: nil, brandId: nil, purpose: "", inputTokens: input,
                                      outputTokens: output, costMicros: nil))
+        #endif
         }
     }
 }
@@ -143,7 +152,8 @@ public enum SummaryProviderChoice: Equatable, Sendable {
 
     public static func choose(allowsAnthropic: Bool, hasAnthropicKey: Bool, allowsCodex: Bool) -> SummaryProviderChoice {
         if allowsAnthropic && hasAnthropicKey { return .anthropic }
-        if allowsCodex { return .codex }
+        // MAS derlemesinde Codex yok: izin kayıtlı olsa da seçilmez.
+        if allowsCodex && AIProviderKind.codex.isSelectable { return .codex }
         return allowsAnthropic ? .missingAnthropicKey : .notAllowed
     }
 

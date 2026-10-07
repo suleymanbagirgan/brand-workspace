@@ -1,0 +1,51 @@
+# CI (Camp H1-13). Tek kaynak: scripts/gelistir-kapisi.sh (test, paket, çeviri, MAS, erişilebilirlik, sızıntı, artık süreç).
+# Kırmızı koşu = KAPI: KALDI. KIRMIZIDA BİRLEŞTİRME YOK (Free planda dal koruması kapalı; kural docs/gelistirme.md'de).
+# Canlı koşu DOĞRULANAMADI: bu dosya yerelde yazıldı, push edilmedi.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kapi:
+    name: Geliştirme kapısı
+    # DOĞRULANAMADI: "macos-26" etiketinin var olduğu bu ortamdan doğrulanamadı; uydurmamak için
+    # genel etiket "macos-latest" (Apple Silicon/arm64 beklenir, paket yalnız arm64). macos-26 var olduğunda
+    # elle değiştirilir. Swift araç sürümü 6.0 ister (Package.swift): runner'daki Xcode'un Swift 6+ olması gerekir.
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@v4
+
+      - name: Araç zinciri bilgisi
+        run: |
+          uname -m
+          xcode-select -p
+          swift --version
+
+      - name: SwiftPM önbelleği
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-${{ runner.arch }}-
+
+      # Tek komut: test + build-app + l10n + mas-tarama + erişilebilirlik + sızıntı + artık süreç. Çıkış 0 = GEÇTİ.
+      # build-app.sh $HOME/Applications altına yazar; runner'da HOME koşuya özeldir, zararsızdır.
+      - name: Kapı (scripts/gelistir-kapisi.sh)
+        env:
+          KAPI_GUNLUK: ${{ runner.temp }}/kapi-gunlukleri
+        run: scripts/gelistir-kapisi.sh

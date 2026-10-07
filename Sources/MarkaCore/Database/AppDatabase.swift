@@ -20,8 +20,34 @@ public final class AppDatabase: Sendable {
         var config = Configuration()
         config.foreignKeysEnabled = true
         config.busyMode = .timeout(5)
-        let pool = try DatabasePool(path: directory.appendingPathComponent("workspace.sqlite").path, configuration: config)
-        return try AppDatabase(writer: pool, filesRoot: directory.appendingPathComponent("Files", isDirectory: true))
+        let dbURL = directory.appendingPathComponent("workspace.sqlite")
+        let existed = FileManager.default.fileExists(atPath: dbURL.path)
+        let pool = try DatabasePool(path: dbURL.path, configuration: config)
+        if existed { try backupBeforeMigration(pool, in: directory) }
+        let db = try AppDatabase(writer: pool, filesRoot: directory.appendingPathComponent("Files", isDirectory: true))
+        // Yedek denetimi migration'dan önce bir okuma bağlantısı açar; o bağlantının şema önbelleği eskidir. Mevcut tabloya
+        // sütun ekleyen migration'dan sonra (v11) `SELECT *` eski sütun listesiyle hazırlanıp "column not found" verir.
+        // Okuma bağlantıları kapatılır; sonraki okumalar güncel şemayla yeni bağlantı açar (E-07'de ölçüldü).
+        pool.invalidateReadOnlyConnections()
+        return db
+    }
+
+    /// Bekleyen migration varsa, çalışmadan önce veri tabanının tutarlı bir kopyasını `Migration-Yedekleri/` altına alır (en yeni 5 kalır).
+    /// Yedek alınamazsa açılış durur: veriyi yedeksiz değiştirmeyiz.
+    static func backupBeforeMigration(_ pool: DatabasePool, in directory: URL) throws {
+        guard try !pool.read({ db in try migrator.hasCompletedMigrations(db) }) else { return }
+        let folder = directory.appendingPathComponent("Migration-Yedekleri", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let stamp = DateFormatter()
+        stamp.locale = Locale(identifier: "en_US_POSIX"); stamp.dateFormat = "yyyyMMdd-HHmmss"
+        let last = try pool.read { db in try migrator.completedMigrations(db).last } ?? "bos"
+        let dest = folder.appendingPathComponent("workspace-\(stamp.string(from: Date()))-\(last).sqlite")
+        let target = try DatabaseQueue(path: dest.path)
+        try pool.backup(to: target)
+        let old = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "sqlite" }.sorted { $0.lastPathComponent > $1.lastPathComponent }.dropFirst(5)
+        // Bilinçli yutma: eski kopya silinemezse yalnız disk dolar; yeni kopya zaten yazıldı, açılış durmamalı.
+        for url in old { try? FileManager.default.removeItem(at: url) }
     }
 
     /// Testler için bellek içi veri tabanı.
@@ -418,6 +444,149 @@ public final class AppDatabase: Sendable {
             }
             try db.create(index: "financeEntry_brand", on: "financeEntry", columns: ["brandId", "kind", "date"])
         }
+        m.registerMigration("v5_sirket_ve_ekip") { db in
+            // "Biz kimiz" (0.4.0): şirket profili (tek satır), hizmetler, ekip üyeleri (insan + yapay zekâ), müşteri ekibi.
+            try db.create(table: "company") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull().defaults(to: "")
+                t.column("tagline", .text).notNull().defaults(to: "")
+                t.column("about", .text).notNull().defaults(to: "")
+                t.column("mission", .text).notNull().defaults(to: "")
+                t.column("foundedOn", .text)
+                t.column("website", .text).notNull().defaults(to: "")
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(table: "serviceOffering") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull()
+                t.column("summary", .text).notNull().defaults(to: "")
+                t.column("details", .text).notNull().defaults(to: "")
+                t.column("status", .text).notNull()
+                t.column("startedOn", .text)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(table: "teamMember") { t in
+                t.primaryKey("id", .text)
+                t.column("kind", .text).notNull()
+                t.column("name", .text).notNull()
+                t.column("title", .text).notNull()
+                t.column("level", .text).notNull()
+                t.column("department", .text).notNull().defaults(to: "")
+                t.column("reportsToId", .text).references("teamMember", onDelete: .setNull)
+                t.column("bio", .text).notNull().defaults(to: "")
+                t.column("startedOn", .text)
+                t.column("email", .text).notNull().defaults(to: "")
+                t.column("status", .text).notNull()
+                t.column("provider", .text).notNull().defaults(to: "")
+                t.column("model", .text).notNull().defaults(to: "")
+                t.column("charter", .text).notNull().defaults(to: "")
+                t.column("skillsJSON", .text).notNull().defaults(to: "[]")
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(index: "teamMember_reportsTo", on: "teamMember", columns: ["reportsToId"])
+            try db.create(table: "brandAssignment") { t in
+                t.belongsTo("brand", onDelete: .cascade).notNull()
+                t.column("memberId", .text).notNull().references("teamMember", onDelete: .cascade)
+                t.column("role", .text).notNull()
+                t.column("createdAt", .datetime).notNull()
+                t.primaryKey(["brandId", "memberId"])
+            }
+            try db.create(index: "brandAssignment_member", on: "brandAssignment", columns: ["memberId"])
+        }
+        m.registerMigration("v6_oturum_calisani") { db in
+            // Sohbet oturumu bir yapay zekâ çalışanın rolüyle açılabilir (0.4.0). Çalışan silinirse oturum kalır, rol bağı kopar.
+            try db.alter(table: "aiSession") { t in
+                t.add(column: "memberId", .text).references("teamMember", onDelete: .setNull)
+            }
+        }
+        m.registerMigration("v7_kendi_sirket") { db in
+            // Stüdyo (0.4.0): kullanıcının kendi şirketi de bir iş alanıdır (görev, dosya, finans, rapor). En çok bir tane olabilir.
+            try db.alter(table: "brand") { t in t.add(column: "isOwn", .boolean).notNull().defaults(to: false) }
+            try db.execute(sql: "CREATE UNIQUE INDEX brand_tek_kendi ON brand(isOwn) WHERE isOwn = 1")
+        }
+        m.registerMigration("v8_yetenekler") { db in
+            // Yetenek kütüphanesi (0.4.0): SKILL.md biçimi; ekip üyesine ad ile bağlanır.
+            try db.create(table: "skill") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull().unique()
+                t.column("title", .text).notNull().defaults(to: "")
+                t.column("description", .text).notNull()
+                t.column("body", .text).notNull().defaults(to: "")
+                t.column("pack", .text).notNull().defaults(to: "")
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+        }
+        m.registerMigration("v9_olcek_indeksleri") { db in
+            // Ölçek (docs/performans-olcumu.md): yalnız indeks; veri ve tablo değişmez. Geri almak için her biri
+            // `DROP INDEX IF EXISTS <ad>` ile kaldırılabilir (sorgular indekssiz de doğru çalışır, yalnız yavaşlar).
+            for (name, table, columns) in Self.v9Indexes {
+                try db.create(index: name, on: table, columns: columns, ifNotExists: true)
+            }
+        }
+        m.registerMigration("v10_gozlemler") { db in
+            // E-01 (docs/entegrasyon-plani-30.md): kanıt sayılı marka gözlemi. Yeni tablo; mevcut tablolara dokunulmaz.
+            // Gözlemin içeriği (cümle, kanıt, marka, başlangıç) değişmez; yalnız açık gözlem bir kez kapatılabilir.
+            try db.create(table: "observation") { t in
+                t.primaryKey("id", .text)
+                t.belongsTo("brand", onDelete: .cascade).notNull()
+                t.column("statement", .text).notNull()
+                t.column("evidenceSourceIds", .text).notNull()
+                t.column("evidenceCount", .integer).notNull()
+                t.column("status", .text).notNull()
+                t.column("validFrom", .datetime).notNull()
+                t.column("invalidatedAt", .datetime)
+                t.column("supersededBy", .text)
+                t.column("createdAt", .datetime).notNull()
+            }
+            try db.create(index: "observation_brand_status", on: "observation", columns: ["brandId", "status"])
+            try db.execute(sql: """
+                CREATE TRIGGER observation_immutable BEFORE UPDATE ON observation
+                WHEN OLD.brandId IS NOT NEW.brandId OR OLD.statement IS NOT NEW.statement
+                  OR OLD.evidenceSourceIds IS NOT NEW.evidenceSourceIds OR OLD.evidenceCount IS NOT NEW.evidenceCount
+                  OR OLD.validFrom IS NOT NEW.validFrom OR OLD.createdAt IS NOT NEW.createdAt
+                  OR OLD.invalidatedAt IS NOT NULL
+                BEGIN SELECT RAISE(ABORT, 'gozlem_degistirilemez'); END;
+                """)
+        }
+        m.registerMigration("v11_yetenek_kokeni") { db in
+            // E-07 (docs/entegrasyon-plani-30.md): yeteneğin kökeni, gövde özeti ve içe aktarma tarihi. Yalnız `skill`'e
+            // sütun eklenir; mevcut satırlar `pack` doluysa 'pack', değilse 'manual' olur (özet bilinmiyor: boş).
+            try db.alter(table: "skill") { t in
+                t.add(column: "origin", .text).notNull().defaults(to: "manual")
+                t.add(column: "contentHash", .text).notNull().defaults(to: "")
+                t.add(column: "importedAt", .datetime)
+            }
+            try db.execute(sql: "UPDATE skill SET origin = 'pack' WHERE pack <> ''")
+        }
+        m.registerMigration("v12_marka_radari") { db in
+            // E-21 (docs/entegrasyon-plani-30.md): elle beslenen marka radarı. Yeni tablo; mevcut tablolara dokunulmaz.
+            // Radar maddesi müşteri kaynağı değildir: `source`'a eklenseydi rapor ve tanı sayıları bozulurdu (kural 4).
+            try db.create(table: "radarItem") { t in
+                t.primaryKey("id", .text)
+                t.belongsTo("brand", onDelete: .cascade).notNull()
+                t.column("title", .text).notNull()
+                t.column("url", .text)
+                t.column("note", .text).notNull().defaults(to: "")
+                t.column("tag", .text).notNull().defaults(to: "")
+                t.column("createdAt", .datetime).notNull()
+                t.column("archivedAt", .datetime)
+            }
+            try db.create(index: "radarItem_brand_created", on: "radarItem", columns: ["brandId", "createdAt"])
+        }
         return m
     }
+
+    /// v9 ölçek indeksleri (ad, tablo, sütunlar). Akış/rapor/Bugün'ün marka içi tarih sıralı sorguları ve onay sayımları için.
+    static let v9Indexes: [(String, String, [String])] = [
+        ("workLog_brand_occurred", "workLog", ["brandId", "occurredAt"]),
+        ("workTask_brand_status_completed", "workTask", ["brandId", "status", "completedAt"]),
+        ("aiProposal_brand_status", "aiProposal", ["brandId", "status"]),
+        ("wikiRevision_brand_state", "wikiRevision", ["brandId", "state"]),
+        ("brandRecord_brand_kind", "brandRecord", ["brandId", "kind"]),
+        ("timeEntry_brand_ended", "timeEntry", ["brandId", "endedAt"]),
+        ("aiSession_member", "aiSession", ["memberId"]),
+    ]
 }

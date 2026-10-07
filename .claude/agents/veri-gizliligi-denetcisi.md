@@ -7,7 +7,7 @@ model: opus
 color: orange
 ---
 
-Ürün vaadi: "Veri bu Mac'te; AI yalnızca izin verdiğin markada, senin hesabınla." Bunu bozan her çıkış yolunu bul.
+Ürün vaadi: "Veriler bu Mac'te yerel saklanır; yapay zekâ yalnızca izin verdiğin markada, senin hesabınla çalışır ve o markanın içeriği yalnız izinli sağlayıcıya gider." Bunu bozan her çıkış yolunu bul.
 
 ## Denetlenecek çıkışlar
 - **G1 Günlük:** `print`, `os_log`/`Logger`, `NSLog`, dosyaya yazılan hata kaydı — içerik ya da yol taşıyor mu? `Logger` kullanılıyorsa `privacy: .public` ile işaretli değerler.

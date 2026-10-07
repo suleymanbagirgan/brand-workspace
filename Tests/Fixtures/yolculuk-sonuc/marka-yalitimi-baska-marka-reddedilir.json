@@ -1,0 +1,47 @@
+{
+  "adimlar" : [
+    {
+      "ad" : "A markasını aç",
+      "cikti" : "marka açıldı: Deneme Yangın",
+      "eylem" : "markaAc",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 1
+    },
+    {
+      "ad" : "B markasını aç",
+      "cikti" : "marka açıldı: Kuzey Lojistik",
+      "eylem" : "markaAc",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 2
+    },
+    {
+      "ad" : "B markasına gizli kaynak ekle",
+      "cikti" : "kaynak eklendi: Bütçe notu",
+      "eylem" : "kaynakEkle",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 3
+    },
+    {
+      "ad" : "A oturumu B kaynağını okumayı dener",
+      "cikti" : "araçlar: kaynak_oku; reddedilen: kaynak_oku; bekleyen öneri: 0",
+      "eylem" : "asistan",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 4
+    },
+    {
+      "ad" : "A iş kaydına B kaynağı bağlanamaz",
+      "cikti" : "reddedildi: Bu kayıt oturumun markasına ait değil. Başka markanın verisi kullanılamaz.",
+      "eylem" : "isKaydiYaz",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 5
+    }
+  ],
+  "gecti" : true,
+  "neden" : "tüm adımlar tuttu",
+  "yolculuk" : "marka-yalitimi-baska-marka-reddedilir"
+}

@@ -91,7 +91,7 @@ private enum GizliMarkaXYZ {}
         let text = DiagnosticReport.render(snapshot, now: Date())
         let dosya = try String(contentsOf: log.url!, encoding: .utf8)
         for metin in [text, dosya] {
-            for gizli in [Self.marka, Self.govde, Self.eposta, "@", NSHomeDirectory(), "/Users/", "Users", "Belgeler", "sman", "sözleşme", "Gizli Kişi", "Gizli sektör"] {
+            for gizli in [Self.marka, Self.govde, Self.eposta, "@", NSHomeDirectory(), "/Users/", "Users", "Belgeler", NSUserName(), "sözleşme", "Gizli Kişi", "Gizli sektör"] {
                 #expect(!metin.contains(gizli), "Tanı çıktısında içerik var: \(gizli)")
             }
         }

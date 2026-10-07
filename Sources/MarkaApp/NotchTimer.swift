@@ -80,17 +80,17 @@ private struct NotchTimerView: View {
                 Circle().fill(Color(red: 1, green: 0.35, blue: 0.3)).frame(width: 7, height: 7).opacity(pulse ? 1 : 0.35)
                     .onAppear { withAnimation(.easeInOut(duration: 0.9).repeatForever()) { pulse = true } }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(app.runningTask?.title ?? L("Zamanlayıcı")).font(.system(size: 10, weight: .medium)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
-                    Text(Timecode.string(app.elapsed)).font(.system(size: 15, weight: .semibold, design: .rounded)).monospacedDigit().foregroundStyle(.white)
+                    Text(app.runningTask?.title ?? L("Zamanlayıcı")).font(Design.Font.small.weight(.medium)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                    Text(Timecode.string(app.elapsed)).font(.system(.title3, design: .rounded, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
                 }
                 Spacer(minLength: 4)
                 Button { app.notchDismissed = true } label: {
-                    Image(systemName: "chevron.up").font(.system(size: 10, weight: .bold)).foregroundStyle(.white.opacity(0.75))
+                    Image(systemName: "chevron.up").font(Design.Icon.small.weight(.bold)).foregroundStyle(.white.opacity(0.75))
                         .frame(width: 24, height: 24).background(Circle().fill(.white.opacity(0.16)))
                 }
                 .buttonStyle(.plain).help(L("Çentikten gizle (sayaç sürer)")).accessibilityLabel(L("Çentikten gizle"))
                 Button { app.stopTimer() } label: {
-                    Image(systemName: "stop.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(.black)
+                    Image(systemName: "stop.fill").font(Design.Icon.small.weight(.bold)).foregroundStyle(.black)
                         .frame(width: 24, height: 24).background(Circle().fill(.white))
                 }
                 .buttonStyle(.plain).help(L("Zamanlayıcıyı durdur")).accessibilityLabel(L("Zamanlayıcıyı durdur"))

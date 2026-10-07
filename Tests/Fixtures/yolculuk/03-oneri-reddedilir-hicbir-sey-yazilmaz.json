@@ -1,0 +1,18 @@
+{
+  "ad": "oneri-reddedilir-hicbir-sey-yazilmaz",
+  "aciklama": "Asistan iki görev önerir; kullanıcı birini onaylar, birini reddeder. Yalnız onaylanan görev oluşur.",
+  "adimlar": [
+    { "ad": "Marka aç", "eylem": "markaAc", "etiket": "A", "baslik": "Örnek Kafe Zinciri" },
+    { "ad": "Asistan iki görev önersin", "eylem": "asistan", "marka": "A", "istem": "Sıradaki işleri çıkar",
+      "betik": [
+        [ { "arac": "gorev_oner", "girdi": { "baslik": "Menü baskısını planla" } },
+          { "arac": "gorev_oner", "girdi": { "baslik": "Tedarikçiye yaz" } } ],
+        [ { "metin": "İki görev önerdim." } ]
+      ],
+      "bekle": { "araclar": ["gorev_oner", "gorev_oner"], "bekleyenOneri": 2, "uygulanmisOneri": 0, "gorevSayisi": 0 } },
+    { "ad": "İlk öneriyi onayla", "eylem": "onayla", "marka": "A", "tur": "createTask", "sira": 0,
+      "bekle": { "bekleyenOneri": 1, "uygulanmisOneri": 1, "gorevSayisi": 1, "gorevBasliklari": ["Menü baskısını planla"] } },
+    { "ad": "Kalan öneriyi reddet", "eylem": "reddet", "marka": "A", "tur": "createTask",
+      "bekle": { "bekleyenOneri": 0, "reddedilenOneri": 1, "uygulanmisOneri": 1, "gorevSayisi": 1 } }
+  ]
+}

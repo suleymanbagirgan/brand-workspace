@@ -67,13 +67,16 @@ public struct JoiTodoImporter: Sendable {
 
     public init() {}
 
+    #if !MAS
     /// Olası veri konumları: iCloud eşitlemesi açıksa önce oradaki klasör.
+    /// MAS derlemesinde yok: sandbox ev dizinini ve iCloud klasörünü göremez; yalnız panelle seçilen klasör (S2).
     public static func candidateDirectories(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [URL] {
         [
             home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/joi-todo", isDirectory: true),
             home.appendingPathComponent(".joi-todo", isDirectory: true),
         ].filter { FileManager.default.fileExists(atPath: $0.appendingPathComponent("tasks.json").path) }
     }
+    #endif
 
     nonisolated(unsafe) static let isoFrac: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()

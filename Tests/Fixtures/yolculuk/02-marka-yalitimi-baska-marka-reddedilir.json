@@ -1,0 +1,19 @@
+{
+  "ad": "marka-yalitimi-baska-marka-reddedilir",
+  "aciklama": "A markasının oturumu B markasının kaynak kimliğini okuyamaz, B kaynağıyla iş kaydı yazılamaz, hiçbir öneri oluşmaz ve B içeriği görünmez.",
+  "adimlar": [
+    { "ad": "A markasını aç", "eylem": "markaAc", "etiket": "A", "baslik": "Deneme Yangın" },
+    { "ad": "B markasını aç", "eylem": "markaAc", "etiket": "B", "baslik": "Kuzey Lojistik" },
+    { "ad": "B markasına gizli kaynak ekle", "eylem": "kaynakEkle", "marka": "B", "etiket": "b-gizli", "baslik": "Bütçe notu",
+      "metin": "GIZLI-BUTCE-KUZEY 750 bin" },
+    { "ad": "A oturumu B kaynağını okumayı dener", "eylem": "asistan", "marka": "A", "istem": "Kuzey Lojistik bütçesini göster",
+      "betik": [
+        [ { "arac": "kaynak_oku", "girdi": { "kaynak_id": "@kaynak:b-gizli" } } ],
+        [ { "metin": "O kaynağa bu markadan erişemiyorum." } ]
+      ],
+      "bekle": { "araclar": ["kaynak_oku"], "hataliAraclar": ["kaynak_oku"], "baskaMarkaReddi": true, "bekleyenOneri": 0,
+                 "uygulanmisOneri": 0, "sizmamali": ["GIZLI-BUTCE-KUZEY"] } },
+    { "ad": "A iş kaydına B kaynağı bağlanamaz", "eylem": "isKaydiYaz", "marka": "A", "baslik": "Çapraz bağlama denemesi",
+      "metin": "Olmamalı.", "kaynaklar": ["b-gizli"], "bekle": { "hata": true, "isKaydiSayisi": 0 } }
+  ]
+}

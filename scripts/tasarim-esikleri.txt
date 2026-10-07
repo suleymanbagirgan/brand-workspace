@@ -1,0 +1,10 @@
+# Tasarım denetimi eşik tabanı (E-15). Kapı: scripts/tasarim-denetimi.py toplamı bu sayıyı AŞARSA KALDI, eşit ya da altında GEÇTİ.
+# Taban E-04 betiğinin Sources/MarkaApp üzerindeki gerçek ölçümünden alındı (2026-10-06 06:05 UTC): toplam 154
+#   (bosluk 153, sabit-renk 1; diğer türler 0). Elle şişirilmez.
+#
+# GÜNCELLEME KURALI: taban yalnız DÜŞÜRÜLÜR. İhlal azaltıldığında şu komutla gerçek toplamı oku, aşağıdaki sayıyı ona eşitle:
+#   python3 scripts/tasarim-denetimi.py | grep '^toplam'
+# Tabanı YÜKSELTMEK kurucu kararıdır; yükseltme gerekçesiyle rapora/commit mesajına yazılır, sessizce yapılmaz.
+# Tek ihlali bilerek tutmak için taban yerine satıra `// tasarim-denetimi: yok-say — <neden>` yazmak tercih edilir (atlanan sayı ayrıca basılır).
+# Bilinen sınır: tek toplam sayısı; bir türde azalma başka türde artışı gizleyebilir (tür bazlı taban yok).
+toplam: 154

@@ -36,7 +36,7 @@ public struct TerminalSessionInfo: Sendable, Hashable {
     }
 }
 
-/// Marka başına tek terminal oturumu tutan önbellek. `Session` görünüm + süreçtir (uygulamada SwiftTerm görünümü);
+/// Marka başına tek terminal oturumu tutan önbellek. `Session` görünüm + süreçtir (0.3.0'dan beri uygulamada kullanılmıyor);
 /// önbellek süreci kendisi sonlandırmaz, sonlandırılacakları döndürür.
 @MainActor
 public final class TerminalSessionCache<Session: AnyObject> {

@@ -14,7 +14,6 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.11.1"),
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", exact: "1.19.0"),
     ],
     targets: [
         .target(
@@ -23,7 +22,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "MarkaApp",
-            dependencies: ["MarkaCore", .product(name: "SwiftTerm", package: "SwiftTerm")]
+            dependencies: ["MarkaCore"]
         ),
         .executableTarget(
             name: "MarkaDogrula",

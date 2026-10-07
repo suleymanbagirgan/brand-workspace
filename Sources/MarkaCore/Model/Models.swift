@@ -34,7 +34,11 @@ public enum DayString {
 public enum BrandStatus: String, Codable, Sendable { case active, archived }
 
 public enum AIProviderKind: String, Codable, Sendable, CaseIterable, Identifiable {
-    case anthropic, codex
+    /// `local` (E-11): kullanıcının bu Mac'te çalıştırdığı model sunucusu. Durum her derlemede vardır (eski kayıt çözülebilsin),
+    /// ama MAS derlemesinde `selectable` dışındadır ve kayda eklenmez: böyle bir oturum MAS'ta hata verir.
+    case anthropic, codex, local
+    /// `apple` (E-25): Apple'ın cihaz üstü modeli (Foundation Models, macOS 26). Araçsız, anahtarsız; MAS'ta da seçilebilir.
+    case apple
     public var id: String { rawValue }
 }
 
@@ -48,14 +52,16 @@ public struct Brand: Codable, Sendable, Hashable, Identifiable, FetchableRecord,
     public var status: BrandStatus
     /// Bu markanın verisinin gönderilebileceği AI sağlayıcıları (virgülle ayrılmış). Varsayılan boş: izin yok.
     public var aiProviders: String
+    /// Kullanıcının kendi şirketi (Stüdyo). Müşteri değildir: ekibi herkestir, raporu müşteriye gitmez. En çok bir tane.
+    public var isOwn: Bool
     public var createdAt: Date
     public var updatedAt: Date
 
     public init(id: String = newID(), name: String, summary: String = "", sector: String = "",
-                logoPath: String? = nil, status: BrandStatus = .active, aiProviders: String = "",
+                logoPath: String? = nil, status: BrandStatus = .active, aiProviders: String = "", isOwn: Bool = false,
                 createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id; self.name = name; self.summary = summary; self.sector = sector
-        self.logoPath = logoPath; self.status = status; self.aiProviders = aiProviders
+        self.logoPath = logoPath; self.status = status; self.aiProviders = aiProviders; self.isOwn = isOwn
         self.createdAt = createdAt; self.updatedAt = updatedAt
     }
 
@@ -209,6 +215,15 @@ public enum TaskStatus: String, Codable, Sendable, CaseIterable, Identifiable {
     case todo, inProgress, waiting, done, cancelled
     public var id: String { rawValue }
     public var isOpen: Bool { self != .done && self != .cancelled }
+    public var title: String {
+        switch self {
+        case .todo: L("Yapılacak")
+        case .inProgress: L("Sürüyor")
+        case .waiting: L("Bekliyor")
+        case .done: L("Bitti")
+        case .cancelled: L("İptal")
+        }
+    }
 }
 
 public struct WorkTask: Codable, Sendable, Hashable, Identifiable, FetchableRecord, PersistableRecord {
@@ -526,13 +541,15 @@ public struct AISession: Codable, Sendable, Hashable, Identifiable, FetchableRec
     public var model: String
     public var title: String
     public var providerThreadId: String?
+    /// Oturum bir yapay zekâ çalışanın rolüyle açıldıysa onun kimliği (yalnız marka kapsamında).
+    public var memberId: String?
     public var createdAt: Date
     public var updatedAt: Date
 
     public init(id: String = newID(), brandId: String?, scope: AIScope, provider: AIProviderKind, model: String,
-                title: String, providerThreadId: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) {
+                title: String, providerThreadId: String? = nil, memberId: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id; self.brandId = brandId; self.scope = scope; self.provider = provider; self.model = model
-        self.title = title; self.providerThreadId = providerThreadId; self.createdAt = createdAt; self.updatedAt = updatedAt
+        self.title = title; self.providerThreadId = providerThreadId; self.memberId = memberId; self.createdAt = createdAt; self.updatedAt = updatedAt
     }
 }
 
@@ -568,12 +585,20 @@ public enum ProposalKind: String, Codable, Sendable, CaseIterable {
     case createTask, completeTask, createWorkLog, wikiRevision, createOutput, createBrandRecord
     /// Metin kaynağı (not / görüşme notu). Yalnızca terminal önerisinden gelir.
     case createNote
+    /// Yeni yapay zekâ çalışan (yalnız şirket sohbetinde önerilir; onayla ekibe girer, geri alınınca arşivlenir).
+    case createTeamMember
+    /// Mevcut görevin başlığını / son tarihini / durumunu değiştirme (eylem kaydı: `task.rename`, `task.reschedule`, `task.setStatus`).
+    case updateTask
+    /// E-06: kanıt sayılı marka gözlemi (`gozlem_oner`). Onayla `observation` tablosuna girer; geri alınınca silinir ve
+    /// yerine geçtiği eski gözlem yeniden açılır.
+    case createObservation
 }
 
 public enum ProposalStatus: String, Codable, Sendable { case pending, applied, rejected, reverted }
 
-/// Önerinin nereden geldiği. `nil`: sohbet (Claude/Codex aracı). `.terminal`: marka klasöründeki `oneriler/*.json`.
-public enum ProposalOrigin: String, Codable, Sendable { case terminal }
+/// Önerinin nereden geldiği. `nil`: sohbet (Claude/Codex aracı). `.terminal`: marka klasöründeki `oneriler/*.json` (şema 1).
+/// `.external` (E-17): dış ajanın öneri zarfı (şema 2 dosyası ya da kullanıcının seçtiği dosya/pano); `originRef` yalnız üretici etiketi.
+public enum ProposalOrigin: String, Codable, Sendable { case terminal, external }
 
 public struct AIProposal: Codable, Sendable, Hashable, Identifiable, FetchableRecord, PersistableRecord {
     public static let databaseTableName = "aiProposal"

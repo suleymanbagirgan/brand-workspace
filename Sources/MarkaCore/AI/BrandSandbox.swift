@@ -1,3 +1,5 @@
+#if !MAS
+// Codex/terminal seatbelt yalıtımı: Mac App Store derlemesinde (`-DMAS`) yoktur (sandbox geçişi S2).
 import Foundation
 import GRDB
 
@@ -125,26 +127,8 @@ public struct SandboxProfile: Sendable, Equatable {
         return paths.filter { seen.insert($0).inserted }
     }
 
-    /// Sembolik bağları çözülmüş mutlak yol. Henüz var olmayan yolda var olan en uzun üst klasör çözülür, kalanı eklenir.
-    public static func canonical(_ path: String) -> String {
-        let standardized = (path as NSString).standardizingPath
-        var head = standardized
-        var tail: [String] = []
-        while head.count > 1 {
-            if let resolved = realpathString(head) {
-                return tail.reversed().reduce(resolved) { ($0 as NSString).appendingPathComponent($1) }
-            }
-            tail.append((head as NSString).lastPathComponent)
-            head = (head as NSString).deletingLastPathComponent
-        }
-        return standardized
-    }
-
-    private static func realpathString(_ path: String) -> String? {
-        guard let p = realpath(path, nil) else { return nil }
-        defer { free(p) }
-        return String(cString: p)
-    }
+    /// Sembolik bağları çözülmüş mutlak yol. `PathCanonical.canonical`'a yönlendirir (S1: yardımcı Codex'ten ayrıldı).
+    public static func canonical(_ path: String) -> String { PathCanonical.canonical(path) }
 }
 
 /// Marka yalıtımı profillerini üretir: Codex App Server ve marka terminali için.
@@ -313,3 +297,4 @@ public enum SandboxRunner {
         return r.status != 0 && !r.stdout.contains(marker) && r.stderr.contains("Operation not permitted")
     }
 }
+#endif

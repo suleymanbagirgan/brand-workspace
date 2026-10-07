@@ -55,6 +55,8 @@ extension Store {
             guard let t = try WorkTask.fetchOne(db, key: tid), t.brandId == log.brandId else { throw MarkaError.brandScope }
         }
         let before = try WorkLog.fetchOne(db, key: log.id)
+        // Kimlik çakışmasıyla başka markanın kaydı bu markaya taşınamaz (kural 1).
+        if let before, before.brandId != log.brandId { throw MarkaError.brandScope }
         var l = log
         l.updatedAt = Date()
         if let before, before.status == .verified {
@@ -77,20 +79,54 @@ extension Store {
 
     /// Kaydı doğrular. Doğrulama kullanıcı eylemidir; AI doğrulayamaz.
     public func verifyWorkLog(_ id: String, verifiedBy: String) throws {
+        try writer.write { db in try verifyWorkLog(db, id, verifiedBy: verifiedBy, actor: .user) }
+    }
+
+    /// İşlem içi doğrulama (örnek marka kurulumu tek işlemde yazılır; aktör `.system`). Kural aynıdır; AI doğrulayamaz.
+    func verifyWorkLog(_ db: Database, _ id: String, verifiedBy: String, actor: Actor) throws {
+        guard actor != .ai else { throw MarkaError.validation(L("Yapay zekâ çalışma kaydını doğrulayamaz.")) }
+        let detail = try Self.workLogDetail(db, id)
+        var l = detail.log
+        // Kural tek yerde (`WorkLogDetail.verificationProblem`); Akış'taki satır içi "Doğrula" da onu sorar.
+        if let problem = detail.verificationProblem { throw MarkaError.validation(problem) }
+        guard !verifiedBy.trimmed.isEmpty else { throw MarkaError.validation(L("Doğrulayan kişi boş olamaz.")) }
+        let before = l
+        l.status = .verified
+        l.verifiedAt = Date()
+        l.verifiedBy = verifiedBy.trimmed
+        l.updatedAt = Date()
+        try l.update(db)
+        try audit(db, actor: actor, brandId: l.brandId, entity: "workLog", entityId: id, action: "verify", before: before, after: l)
+    }
+
+    /// Kullanıcının elle yazdığı iş kaydı (H2-03, U-09): kaydeder ve aynı işlemde doğrular; yapay zekâ olmadan rapora madde
+    /// girebilsin diye. Kural 4 gevşetilmez: kullanıcının kaydet eylemi doğrulama eylemidir, ama `verificationProblem`
+    /// (“Ne yapıldı?” dolu + en az bir dosya ya da görev bağlı) aynen sorulur; sorun varsa işlem geri alınır, hiçbir şey
+    /// yazılmaz. Kaydın aktörü her zaman `.user`; AI'nin yazdığı kayıt bu yoldan geçemez (taslak kalır, ayrıca doğrulanır).
+    /// Denetim izi: `create`/`update` + `verify`.
+    @discardableResult
+    public func saveUserWorkLog(_ log: WorkLog, inputSourceIds: [String], outputSourceIds: [String],
+                                verifiedBy: String) throws -> WorkLog {
         try writer.write { db in
-            let detail = try Self.workLogDetail(db, id)
-            var l = detail.log
-            // Kural tek yerde (`WorkLogDetail.verificationProblem`); Akış'taki satır içi "Doğrula" da onu sorar.
-            if let problem = detail.verificationProblem { throw MarkaError.validation(problem) }
-            guard !verifiedBy.trimmed.isEmpty else { throw MarkaError.validation(L("Doğrulayan kişi boş olamaz.")) }
-            let before = l
-            l.status = .verified
-            l.verifiedAt = Date()
-            l.verifiedBy = verifiedBy.trimmed
-            l.updatedAt = Date()
-            try l.update(db)
-            try audit(db, actor: .user, brandId: l.brandId, entity: "workLog", entityId: id, action: "verify", before: before, after: l)
+            try saveUserWorkLog(db, log, inputs: inputSourceIds, outputs: outputSourceIds, verifiedBy: verifiedBy, actor: .user)
         }
+    }
+
+    func saveUserWorkLog(_ db: Database, _ log: WorkLog, inputs: [String], outputs: [String],
+                         verifiedBy: String, actor: Actor) throws -> WorkLog {
+        guard actor == .user else { throw MarkaError.validation(L("Elle iş kaydını yalnız kullanıcı yazar.")) }
+        guard !log.title.trimmed.isEmpty else { throw MarkaError.validation(L("Başlık boş olamaz.")) }
+        if let before = try WorkLog.fetchOne(db, key: log.id), before.actor != .user || before.brandId != log.brandId {
+            throw MarkaError.validation(L("Elle iş kaydını yalnız kullanıcı yazar."))
+        }
+        var l = log
+        l.actor = .user
+        l.sessionId = nil
+        let saved = try saveWorkLog(db, l, inputs: inputs, outputs: outputs, actor: .user)
+        if saved.status != .verified {
+            try verifyWorkLog(db, saved.id, verifiedBy: verifiedBy, actor: .user)
+        }
+        return try WorkLog.fetchOne(db, key: saved.id) ?? saved
     }
 
     /// Görev için çalışma kaydı önerilmeli mi? Görevin geri çekilmemiş bir çalışma kaydı varsa önerilmez.

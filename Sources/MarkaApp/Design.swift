@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Görsel dil (0.2.1, Rams: "daha az, ama daha iyi"). Belirteçler `docs/surum-0.2.1.md` §7'den; başka değer kullanılmaz.
 /// - Renk: sistem nötrleri + tek vurgu (birincil düğme, onay bekleyen sayısı, seçim) + yalnız gecikme için tehlike rengi.
-/// - Yazı: 4 stil (`Design.Font`). Boşluk: 4 değer (`Design.Space`). Köşe: tek değer (`Design.radius`), yalnız giriş alanı ve bant.
+/// - Yazı: 6 rol (`Design.Font`), simge: 4 boyut (`Design.Icon`). Boşluk: 4 değer (`Design.Space`). Köşe: 3 değer (`Design.Radius`).
 /// - Kutu yok: kart, gölge, rozet kapsülü yok; ayrım boşluk ve ince çizgiyle. Tek istisna onay bandı.
 /// Renk değerleri `MarkaCore.Palette`'te; kontrastları `KontrastTests` denetler (WCAG AA).
 enum Design {
@@ -31,26 +31,39 @@ enum Design {
     static let panel = AdaptiveColor(system: .controlBackgroundColor, light: Palette.RGB(0xF7F8FA), dark: Palette.RGB(0x272B35))
     /// Seçili marka satırı zemini.
     static let rowSelected = AdaptiveColor(system: .selectedContentBackgroundColor.withAlphaComponent(0.18), light: Palette.RGB(0xE6E9F1), dark: Palette.RGB(0x303646))
-    /// Terminal paneli (her iki görünümde koyu).
-    static let terminalBackground = Color(.sRGB, red: 0x15 / 255, green: 0x18 / 255, blue: 0x20 / 255)
-    static let terminalPanel = Color(.sRGB, red: 0x1C / 255, green: 0x20 / 255, blue: 0x2B / 255)
-    static let terminalLine = Color(.sRGB, red: 0x2B / 255, green: 0x30 / 255, blue: 0x3D / 255)
-    static let terminalMuted = Color(.sRGB, red: 0xA0 / 255, green: 0xA9 / 255, blue: 0xBC / 255)
 
     /// Rapor kâğıdı (her iki görünümde beyaza yakın: müşteriye giden belge) ve onu taşıyan tuval.
     static let reportPaper = Color(.sRGB, red: 0.99, green: 0.99, blue: 0.99)
     static let canvas = AdaptiveColor(Palette.Pair(light: Palette.RGB(0xE9ECF2), dark: Palette.RGB(0x15171D)))
 
-    // MARK: Yazı (4 stil)
+    // MARK: Yazı (6 rol, H2-04). Ağırlık çağrı yerinde `.weight(…)` ile; en küçük rol 11 pt (okunabilirlik tabanı).
+    /// `TasarimDiliTests` rol sayısını (≤ 6) ve sabit boyut tavanını denetler.
     enum Font {
-        /// Ekran başlığı.
-        static let title = SwiftUI.Font.title2.weight(.semibold)
-        /// Bölüm başlığı.
-        static let section = SwiftUI.Font.headline
-        /// Gövde.
+        /// Sayfa başlığı ve büyük sayı göstergesi: 34 pt kalın.
+        // sabit-boyut: macOS'ta 26 pt (largeTitle) üstünde anlamsal stil yok; tasarım teslimindeki sayfa başlığı 34 pt.
+        static let display = SwiftUI.Font.system(size: 34, weight: .bold)
+        /// Panel/karşılama başlığı: 22 pt (`.title`).
+        static let title = SwiftUI.Font.title
+        /// Bölüm ve kart başlığı: 15 pt (`.title3`).
+        static let heading = SwiftUI.Font.title3
+        /// Gövde: 13 pt (`.body`).
         static let body = SwiftUI.Font.body
-        /// Ek bilgi; `.captionStyle()` ile ikincil renkte.
-        static let caption = SwiftUI.Font.caption
+        /// İkincil metin, düğme: 12 pt (`.callout`).
+        static let callout = SwiftUI.Font.callout
+        /// Küçük ek bilgi, hap, sayaç: 11 pt (`.subheadline`); `.captionStyle()` bunu ikincil renkte verir.
+        static let small = SwiftUI.Font.subheadline
+    }
+
+    /// Simge ölçeği (yazı rolü değil; 4 değer). SF Symbol boyutu yazı boyutundan bağımsız seçilir.
+    enum Icon {
+        // sabit-boyut: simge ölçeği; anlamsal yazı stili simge boyutunu ifade etmez.
+        static let small = SwiftUI.Font.system(size: 11)
+        // sabit-boyut: simge ölçeği.
+        static let medium = SwiftUI.Font.system(size: 14)
+        // sabit-boyut: simge ölçeği.
+        static let large = SwiftUI.Font.system(size: 20)
+        // sabit-boyut: simge ölçeği (boş durum ve karşılama simgesi).
+        static let hero = SwiftUI.Font.system(size: 30)
     }
 
     // MARK: Boşluk (4 değer) ve köşe
@@ -60,7 +73,12 @@ enum Design {
         static let m: CGFloat = 16
         static let l: CGFloat = 24
     }
-    static let radius: CGFloat = 7
+    /// Köşe yarıçapı (3 değer, H2-04): küçük = düğme, giriş alanı, satır; orta = bildirim, kart içi kutu; büyük = kart, sütun.
+    enum Radius {
+        static let small: CGFloat = 7
+        static let medium: CGFloat = 10
+        static let large: CGFloat = 14
+    }
     /// Sayfa kenar boşlukları. macOS 26'da kenar çubuğu içeriğin üstünde yüzen cam bir panel; sütun kenarından yaklaşık 24 pt
     /// taşar, bu yüzden sol boşluk daha geniş (gerçek pencerede ölçüldü: 34 pt'te içerik cama yapışık görünüyordu).
     static var pageLeading: CGFloat { if #available(macOS 26, *) { 54 } else { 34 } }
@@ -105,6 +123,7 @@ struct BrandAvatar: View {
         let ink: AnyShapeStyle = selected ? AnyShapeStyle(scheme == .dark ? Color(.sRGB, red: 0.1, green: 0.11, blue: 0.15) : Color.white) : tint
         let fill: AnyShapeStyle = selected ? tint : AnyShapeStyle(tint.opacity(scheme == .dark ? 0.22 : 0.14))
         Text(initial)
+            // sabit-boyut: avatar harfi, kutu boyutuyla orantılı.
             .font(.system(size: size * 0.5, weight: .semibold, design: .serif))
             .foregroundStyle(ink)
             .frame(width: size, height: size)
@@ -141,7 +160,7 @@ struct AdaptiveColor: ShapeStyle {
 
 extension View {
     /// Ek stil: küçük yazı, ikincil renk.
-    func captionStyle() -> some View { font(Design.Font.caption).foregroundStyle(.secondary) }
+    func captionStyle() -> some View { font(Design.Font.small).foregroundStyle(.secondary) }
 }
 
 /// Ekran çizimi (`MARKA_SNAPSHOT`) `ImageRenderer` ile yapılır; `ScrollView` gibi AppKit destekli kapsayıcılar orada boş çıkar.
@@ -181,7 +200,7 @@ private struct TextButtonLabel: View {
         configuration.label
             .foregroundStyle(.primary)
             .padding(.horizontal, Design.Space.xs)
-            .background(RoundedRectangle(cornerRadius: Design.radius)
+            .background(RoundedRectangle(cornerRadius: Design.Radius.small)
                 .fill((hovering || configuration.isPressed) && isEnabled ? AnyShapeStyle(Design.selection) : AnyShapeStyle(.clear)))
             .opacity(isEnabled ? 1 : 0.4)
             .contentShape(Rectangle())
@@ -200,7 +219,7 @@ struct HoverHighlight: ViewModifier {
     @State private var hovering = false
     func body(content: Content) -> some View {
         content
-            .background(RoundedRectangle(cornerRadius: Design.radius)
+            .background(RoundedRectangle(cornerRadius: Design.Radius.small)
                 .fill(hovering && enabled ? AnyShapeStyle(Design.selection) : AnyShapeStyle(.clear)))
             .onHover { hovering = $0 }
     }
@@ -268,8 +287,8 @@ struct InputField: View {
                 .lineLimit(1)
                 .padding(.horizontal, Design.Space.s).padding(.vertical, Design.Space.xs)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: Design.radius).fill(Design.bandBackground))
-                .overlay(RoundedRectangle(cornerRadius: Design.radius).strokeBorder(Design.line))
+                .background(RoundedRectangle(cornerRadius: Design.Radius.small).fill(Design.bandBackground))
+                .overlay(RoundedRectangle(cornerRadius: Design.Radius.small).strokeBorder(Design.line))
         } else if let focus {
             TextField(title, text: $text).textFieldStyle(.roundedBorder).focused(focus)
         } else {
@@ -292,6 +311,7 @@ struct PageScroll<Content: View>: View {
                 ScrollView {
                     content
                         .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .topLeading)
+                        // a11y-tarama: yok-say — boş zemine dokunma yalnız seçimi kaldırır; klavye/VoiceOver karşılığı Esc
                         .background { Color.clear.contentShape(Rectangle()).onTapGesture(perform: backgroundTap) }
                 }
                 .denseScrollEdge()
@@ -313,11 +333,11 @@ struct EmptyStateView: View {
     var symbol = "tray"
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: symbol).font(.system(size: 30, weight: .light)).foregroundStyle(.tertiary)
+            Image(systemName: symbol).font(Design.Icon.hero.weight(.light)).foregroundStyle(.tertiary)
                 .padding(.bottom, 4).accessibilityHidden(true)
-            Text(title ?? message).font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.center)
+            Text(title ?? message).font(Design.Font.heading.weight(.semibold)).multilineTextAlignment(.center)
             if title != nil {
-                Text(message).font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Text(message).font(Design.Font.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .lineSpacing(2).fixedSize(horizontal: false, vertical: true).frame(maxWidth: 380)
             }
             if let actionTitle, let action {
@@ -347,14 +367,16 @@ struct ReadErrorView: View {
 /// Son tarih. Yalnızca gecikmiş olan tehlike renginde; bugün ve ileri tarih ikincil.
 struct DueLabel: View {
     let day: String
+    /// Kayıt hâlâ açık mı? Bitmiş/iptal kaydın geçmiş tarihi gecikme değildir; kırmızı yalnız açık ve geçmiş tarihli kayıtta.
+    var isOpen: Bool = true
     var body: some View {
         let today = DayString.from(Date())
-        let overdue = day < today
+        let overdue = isOpen && day < today
         let date = DayString.date(day)
         Group {
             if let date { Text(date, format: .dateTime.day().month(.abbreviated)) } else { Text(day) }
         }
-        .font(Design.Font.caption).monospacedDigit()
+        .font(Design.Font.small).monospacedDigit()
         .foregroundStyle(overdue ? AnyShapeStyle(Design.danger) : AnyShapeStyle(.secondary))
         .accessibilityLabel(overdue ? LF("Gecikmiş, son tarih %@", day) : LF("Son tarih %@", day))
     }
@@ -413,17 +435,6 @@ extension RecordStatus {
     }
 }
 
-extension TaskStatus {
-    var title: String {
-        switch self {
-        case .todo: L("Yapılacak")
-        case .inProgress: L("Sürüyor")
-        case .waiting: L("Bekliyor")
-        case .done: L("Bitti")
-        case .cancelled: L("İptal")
-        }
-    }
-}
 
 extension WorkLogStatus {
     var title: String {
@@ -463,6 +474,8 @@ extension AIProviderKind {
         switch self {
         case .anthropic: "Claude"
         case .codex: "Codex"
+        case .local: L("Bu Mac'teki model")
+        case .apple: "Apple Intelligence"   // E-25
         }
     }
 }
@@ -528,9 +541,9 @@ struct PrimaryActionStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .medium)).foregroundStyle(.white)
+            .font(Design.Font.callout.weight(.medium)).foregroundStyle(.white)
             .padding(.horizontal, 13).frame(height: 33)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Design.accentFill).opacity(configuration.isPressed || !enabled ? 0.7 : 1))
+            .background(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).fill(Design.accentFill).opacity(configuration.isPressed || !enabled ? 0.7 : 1))
     }
 }
 
@@ -538,10 +551,10 @@ struct PrimaryActionStyle: ButtonStyle {
 struct SecondaryActionStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .medium))
+            .font(Design.Font.callout.weight(.medium))
             .padding(.horizontal, 12).frame(height: 33)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(configuration.isPressed ? AnyShapeStyle(Design.panel) : AnyShapeStyle(Design.windowBackground)))
-            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Design.line))
+            .background(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).fill(configuration.isPressed ? AnyShapeStyle(Design.panel) : AnyShapeStyle(Design.windowBackground)))
+            .overlay(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).strokeBorder(Design.line))
     }
 }
 
@@ -584,7 +597,7 @@ private struct ActionButtonModifier: ViewModifier {
 extension View {
     /// Liste satırı zemini: seçiliyken seçim rengi, üzerine gelince hafif vurgu (fare: "uygulama yaşıyor" hissi). Hareketi Azalt'a
     /// saygılı, yalnız renk geçişi.
-    func rowBackground(selected: Bool, radius: CGFloat = Design.radius) -> some View {
+    func rowBackground(selected: Bool, radius: CGFloat = Design.Radius.small) -> some View {
         modifier(RowBackgroundModifier(selected: selected, radius: radius))
     }
 }
@@ -613,7 +626,7 @@ extension View {
     }
 
     /// Gruplanmış yüzey (Ayarlar, Hatırlatıcılar gibi): hafif dolgu, ince çizgi, açık görünümde yumuşak gölge.
-    func card(padding: CGFloat = 0, radius: CGFloat = 14) -> some View { modifier(CardModifier(padding: padding, radius: radius)) }
+    func card(padding: CGFloat = 0, radius: CGFloat = Design.Radius.large) -> some View { modifier(CardModifier(padding: padding, radius: radius)) }
 }
 
 private struct CardModifier: ViewModifier {
@@ -635,8 +648,101 @@ struct Pill: View {
     let text: String
     var tint: AnyShapeStyle = AnyShapeStyle(.secondary)
     var body: some View {
-        Text(text).font(.system(size: 10, weight: .medium)).foregroundStyle(tint).lineLimit(1)
+        Text(text).font(Design.Font.small.weight(.medium)).foregroundStyle(tint).lineLimit(1)
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background(Capsule().fill(tint.opacity(0.13)))
+    }
+}
+
+
+/// Özet kutucuk satırı: sığdığı kadar (en çok dört) eşit sütun; dar alanda (örn. asistan paneli açıkken) alt satıra sarılır, geniş alanda
+/// satırı doldurur. Sabit genişlik de, `.adaptive` de bunu yapmıyordu (sağda boşluk kalıyordu).
+struct TileGrid<Content: View>: View {
+    var minTile: CGFloat = 150
+    /// Kutucuk sayısı (en çok sütun): üç kutucuk dört sütunda soldan yığılmasın.
+    var columns = 4
+    @ViewBuilder var content: Content
+    @State private var width: CGFloat = 1000
+
+    var body: some View {
+        let fit = max(1, min(columns, Int((width + 12) / (minTile + 12))))
+        // Dört kutucuk üç sütuna sığarsa 3+1 yetim kutu kalır; 2+2 dizilir.
+        let n = (columns == 4 && fit == 3) ? 2 : fit
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .topLeading), count: n), alignment: .leading, spacing: 12) {
+            content
+        }
+        .background(GeometryReader { g in
+            Color.clear.onAppear { width = g.size.width }.onChange(of: g.size.width) { _, w in width = w }
+        })
+    }
+}
+
+
+/// Öğeleri soldan sağa dizer, sığmayınca alt satıra sarar (çipler için). Izgara sütunları eşit olmayan boşluk bırakıyordu.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width { y += rowHeight + spacing; x = 0; rowHeight = 0 }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return CGSize(width: widest, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX { y += rowHeight + spacing; x = bounds.minX; rowHeight = 0 }
+            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+/// Bölüm açılışında odak: ilk metin alanı (arama kutusu) odak almasın; odak kenar çubuğu listesine geçsin ki seçili satır
+/// vurgulu (pasif gri değil) kalsın ve satırdaki onay sayısı okunsun. Liste bulunamazsa odak yalnız bırakılır.
+/// AppKit pencere anahtar olunca ilk metin alanına kendiliğinden odak verebildiği için kısa bir gecikmeyle bir kez daha bakılır.
+@MainActor enum OpeningFocus {
+    static func settle() {
+        DispatchQueue.main.async { apply() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            // Yalnız metin alanı odaktaysa (alan düzenleyicisi) yeniden düzelt; kullanıcı başka yere tıkladıysa dokunma.
+            if NSApp.keyWindow?.firstResponder is NSTextView { apply() }
+        }
+    }
+
+    /// Sayfa (sheet) açılışı: ilk metin alanı seçili/odaklı açılmasın (yanlışlıkla yazınca başlığın üstüne yazılıyordu).
+    /// Sayfa penceresi bir süre sonra anahtar olduğundan iki kez bakılır; yalnız metin alanı odaktaysa odak bırakılır.
+    static func clearTextFocus() {
+        for delay in [0.05, 0.4] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                if let window = NSApp.keyWindow, window.firstResponder is NSTextView { window.makeFirstResponder(nil) }
+            }
+        }
+    }
+
+    private static func apply() {
+        guard let window = NSApp.keyWindow else { return }
+        if let list = sidebarList(in: window.contentView) { window.makeFirstResponder(list) } else { window.makeFirstResponder(nil) }
+    }
+
+    /// Penceredeki en soldaki tablo/anahat görünümü kenar çubuğu listesidir.
+    private static func sidebarList(in root: NSView?) -> NSTableView? {
+        guard let root else { return nil }
+        var found: [NSTableView] = []
+        var stack: [NSView] = [root]
+        while let view = stack.popLast() {
+            if let table = view as? NSTableView, !table.isHiddenOrHasHiddenAncestor { found.append(table) }
+            stack.append(contentsOf: view.subviews)
+        }
+        return found.min { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
     }
 }

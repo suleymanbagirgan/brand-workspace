@@ -13,6 +13,8 @@ struct FlowView: View {
     @State private var selection: PanelTarget?
     @State private var composing = false
     @State private var dropTargeted = false
+    /// Elle iş kaydı (H2-03, U-09): "+ İş kaydı" ile açılan düzenleyici.
+    @State private var writingLog: WorkLogDetail?
 
     init(brand: Brand, selection: PanelTarget? = nil) {
         self.brand = brand
@@ -24,19 +26,26 @@ struct FlowView: View {
 
     var body: some View {
         let _ = app.revision
-        let days = FlowItem.days((try? app.store?.flow(brandId: brand.id, limit: Self.limit)) ?? [], calendar: .current)
-        let todo = (try? app.store?.todo(brandId: brand.id)) ?? []
+        let days = FlowItem.days(app.read(or: []) { try $0.flow(brandId: brand.id, limit: Self.limit) }, calendar: .current)
+        let todo = app.read(or: []) { try $0.todo(brandId: brand.id) }
         let flowItems = days.flatMap(\.items)
         ListWithPanel(selection: $selection) {
             PageScroll(backgroundTap: { selection = nil }) {
                 VStack(alignment: .leading, spacing: Design.Space.l) {
-                    BrandHero(brand: brand)
+                    if app.store?.isSampleBrand(brand.id) == true { SampleBrandBanner(brand: brand) }
+                    BrandSummaryLine(brand: brand)
                     overview(todo: todo, flow: flowItems)
                     upcoming(todo)
                     HStack(alignment: .center) {
-                        Text(L("Akış")).font(.system(size: 20, weight: .bold)).tracking(-0.3).accessibilityAddTraits(.isHeader)
-                        Text(L("Ne yapıldı: iş kayıtları, biten görevler, notlar ve dosyalar.")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                        Text(L("Akış")).font(Design.Font.heading.weight(.semibold)).accessibilityAddTraits(.isHeader)
+                        Text(L("Ne yapıldı: iş kayıtları, biten görevler, notlar ve dosyalar.")).font(Design.Font.callout).foregroundStyle(.secondary).lineLimit(1)
                         Spacer(minLength: Design.Space.m)
+                        Button { writingLog = .newDraft(brandId: brand.id) } label: {
+                            Label(L("İş kaydı"), systemImage: "plus").labelStyle(.titleAndIcon)
+                        }
+                        .actionSecondary()
+                        .help(L("Yaptığın işi yaz; kaydettiğinde doğrulanmış sayılır ve rapora girer."))
+                        .accessibilityLabel(L("İş kaydı ekle"))
                         Button { composing.toggle() } label: {
                             Label(composing ? L("Vazgeç") : L("Not ekle"), systemImage: composing ? "xmark" : "square.and.pencil").labelStyle(.titleAndIcon)
                         }
@@ -47,12 +56,12 @@ struct FlowView: View {
                     if composing { NoteComposer(brand: brand) { composing = false } }
                     if days.isEmpty {
                         EmptyStateView(title: L("Henüz bir şey yok"),
-                                       message: L("Terminalde çalışırken Claude'dan yaptıklarını oneriler/ klasörüne yazmasını isteyebilirsin; gelenler onay için burada görünür. Dosya eklemek için buraya sürükle ya da marka klasörüne koy."),
+                                       message: L("Dosya sürükle ya da not ekle. Asistanın önerileri onay bandında görünür."),
                                        symbol: "clock.arrow.circlepath")
                     } else {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(days) { day in
-                                Text(Self.dayTitle(day.day)).font(.system(size: 12, weight: .semibold))
+                                Text(Self.dayTitle(day.day)).font(Design.Font.callout.weight(.semibold))
                                     .padding(.top, Design.Space.m).padding(.bottom, Design.Space.xs)
                                     .accessibilityAddTraits(.isHeader)
                                 VStack(spacing: 0) {
@@ -69,22 +78,25 @@ struct FlowView: View {
                 .pagePadding().padding(.vertical, Design.Space.l)
             }
         }
-        .overlay { if dropTargeted { RoundedRectangle(cornerRadius: Design.radius).strokeBorder(Design.accent, lineWidth: 2) } }
+        .overlay { if dropTargeted { RoundedRectangle(cornerRadius: Design.Radius.small).strokeBorder(Design.accent, lineWidth: 2) } }
         .liveOnly(FileDrop(targeted: $dropTargeted) { addFiles($0) })
-        .onChange(of: brand.id) { selection = nil; composing = false }
+        .sheet(item: $writingLog) { d in WorkLogEditor(detail: d, isNew: true).environment(app) }
+        .onChange(of: brand.id) { selection = nil; composing = false; writingLog = nil }
     }
 
-    /// Dört özet kutucuğu: açık görev, bu hafta biten, müşteriden beklenen karar, doğrulanmamış iş kaydı.
+    /// Dört özet kutucuğu: açık iş (Görevler'deki liste), bu hafta biten, müşteriden beklenen karar, doğrulanmamış iş kaydı.
     private func overview(todo: [TodoItem], flow: [FlowItem]) -> some View {
-        let calendar = StatusService.turkishCalendar
-        let weekStart = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
-        let openTasks = todo.filter { if case .task = $0.kind { true } else { false } }.count
+        // H3-10: "Bu hafta" aralığı ve "biten görev" tanımı Bugün'deki kutucukla aynı (`CountDefinitions`).
+        let week = CountDefinitions.week(containing: Date(), calendar: StatusService.turkishCalendar)
+        // Görevler bölümünün başlığındaki "N açık" ile aynı tanım: `store.todo` öğelerinin tümü (görev, söz, karar, talep).
+        let openTasks = todo.count
         let decisions = todo.filter { if case .record(.decision, _) = $0.kind { true } else { false } }.count
-        let doneThisWeek = flow.filter { if case .taskDone = $0.kind { $0.date >= weekStart } else { false } }.count
+        // Görevler doğrudan sayılır: iş kaydı bağlı biten görev Akış'ta ayrı bir kayıt olarak görünür ve `flow` üzerinden sayılmazdı.
+        let doneThisWeek = app.read(or: 0) { try $0.completedTaskCount(brandId: brand.id, week: week) }
         let drafts = flow.filter { if case .workLog(.draft) = $0.kind { true } else { false } }.count
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 12, alignment: .topLeading)], alignment: .leading, spacing: 12) {
-            TodayTile(symbol: "checklist", title: L("Açık görev"), count: openTasks) { app.brandTab = .todo }
-            TodayTile(symbol: "checkmark.circle", title: L("Bu hafta biten"), count: doneThisWeek) {}
+        return TileGrid {
+            TodayTile(symbol: "checklist", title: L("Açık iş"), count: openTasks) { app.brandTab = .todo }
+            TodayTile(symbol: "checkmark.circle", title: L("Bu hafta biten görev"), count: doneThisWeek) {}
             TodayTile(symbol: "hourglass", title: L("Karar bekleniyor"), count: decisions, emphasize: decisions > 0) { app.brandTab = .todo }
             TodayTile(symbol: "checkmark.seal", title: L("Doğrulanmadı"), count: drafts, emphasize: drafts > 0) {}
         }
@@ -96,8 +108,8 @@ struct FlowView: View {
         if !dated.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Image(systemName: "calendar").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                    Text(L("Sıradaki teslimler")).font(.system(size: 12, weight: .semibold))
+                    Image(systemName: "calendar").font(Design.Icon.small.weight(.semibold)).foregroundStyle(.secondary)
+                    Text(L("Sıradaki teslimler")).font(Design.Font.heading.weight(.semibold))
                 }
                 .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
                 VStack(spacing: 0) {
@@ -106,14 +118,15 @@ struct FlowView: View {
                         Button { app.brandTab = .todo; app.panelTarget = PanelTarget(item) } label: {
                             HStack(spacing: 12) {
                                 StatusCircle(state: item.circleState, size: 15)
-                                Text(item.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                                Text(item.title).font(Design.Font.body.weight(.medium)).lineLimit(1)
                                 Spacer()
-                                Text(item.kindTitle).font(.system(size: 11)).foregroundStyle(.secondary)
+                                Text(item.kindTitle).font(Design.Font.small).foregroundStyle(.secondary)
                                 if let d = item.dueDate { DueLabel(day: d) }
                             }
                             .padding(.vertical, 12).padding(.horizontal, 14).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain).rowBackground(selected: false, radius: 0)
+                        .accessibilityValue(item.circleState.title)
                     }
                 }
                 .flatList()
@@ -154,16 +167,16 @@ struct FlowRow: View {
         let selected = selection == target
         HStack(alignment: .center, spacing: 12) {
             let tint: AnyShapeStyle = Self.isWorkLog(item.kind) ? AnyShapeStyle(Design.accent) : AnyShapeStyle(.secondary)
-            Image(systemName: Self.symbol(item.kind)).font(.system(size: 13, weight: .semibold)).foregroundStyle(tint)
+            Image(systemName: Self.symbol(item.kind)).font(Design.Icon.medium.weight(.semibold)).foregroundStyle(tint)
                 .frame(width: 32, height: 32).background(Circle().fill(tint.opacity(0.13)))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                Text(item.kind.title).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                Text(item.title).font(Design.Font.body.weight(.medium)).lineLimit(1)
+                Text(item.kind.title).font(Design.Font.small).foregroundStyle(.secondary).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if case .workLog(.draft) = item.kind { Pill(text: WorkLogStatus.draft.title, tint: AnyShapeStyle(Design.accent)) }
-            Text(item.date, format: .dateTime.hour().minute()).font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
+            Text(item.date, format: .dateTime.hour().minute()).font(Design.Font.small).foregroundStyle(.secondary).monospacedDigit()
                 .frame(width: Self.timeWidth, alignment: .trailing)
         }
         .padding(.vertical, 10).padding(.horizontal, 14)
@@ -242,32 +255,75 @@ struct NoteComposer: View {
     let done: () -> Void
     @State private var title = ""
     @State private var text = ""
+    @State private var finished = false
+    @State private var pendingId = UUID()
+    @FocusState private var titleFocused: Bool
+    @FocusState private var noteFocused: Bool
+
+    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var canAdd: Bool { !trimmedTitle.isEmpty || !trimmedText.isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.s) {
-            InputField(title: L("Başlık"), text: $title)
-                .onSubmit { if !title.trimmingCharacters(in: .whitespaces).isEmpty { add() } }
-            TextField(L("Not"), text: $text, axis: .vertical)
-                .lineLimit(3...10)
-                .textFieldStyle(.roundedBorder)
+            InputField(title: L("Başlık"), text: $title, focus: $titleFocused)
+                .onSubmit { noteFocused = true }
+            // Enter yeni satır açar (çok satırlı not); kayıt: Ekle, ⌘↩ ya da odak iki alandan da çıkınca.
+            TextEditor(text: $text)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .focused($noteFocused)
+                .frame(minHeight: 72, maxHeight: 200)
+                .padding(Design.Space.xs)
+                .background(RoundedRectangle(cornerRadius: Design.Radius.small).fill(Design.bandBackground))
+                .overlay(RoundedRectangle(cornerRadius: Design.Radius.small).strokeBorder(Design.line))
+                .overlay(alignment: .topLeading) {
+                    if text.isEmpty {
+                        Text(L("Not")).foregroundStyle(.secondary)
+                            .padding(.horizontal, Design.Space.xs + 5).padding(.vertical, Design.Space.xs + 1)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .accessibilityLabel(L("Not"))
             HStack(spacing: Design.Space.m) {
                 Spacer()
                 Button(L("Ekle")) { add() }
                     .buttonStyle(.text)
-                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!canAdd)
             }
         }
         .padding(.vertical, Design.Space.s)
         .overlay(alignment: .bottom) { Rectangle().fill(Design.line).frame(height: 1) }
+        .onChange(of: titleFocused) { _, _ in focusMaybeLeft() }
+        .onChange(of: noteFocused) { _, _ in focusMaybeLeft() }
+        .onChange(of: title) { _, _ in registerPending() }
+        .onChange(of: text) { _, _ in registerPending() }
+        .onDisappear { finished = true; PendingEdits.shared.clear(pendingId) }
+    }
+
+    /// Odak iki alandan da çıktıysa ve yazılmış bir şey varsa kaydeder (alanlar arası geçiş kayıt sayılmaz).
+    private func focusMaybeLeft() {
+        if !titleFocused && !noteFocused && canAdd && !finished { add() }
+    }
+
+    /// Yazarken uygulama kapanırsa yazılan kaybolmasın (U-07); kayıt `add` ile tek sefer olur.
+    private func registerPending() {
+        if canAdd && !finished { PendingEdits.shared.register(pendingId, save: { add() }) }
     }
 
     private func add() {
-        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !finished, canAdd else { return }
+        finished = true
+        PendingEdits.shared.clear(pendingId)
+        // Başlık boşsa notun ilk satırı başlık olur; metin boşsa başlık metin olarak saklanır.
+        let firstLine = trimmedText.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let t = trimmedTitle.isEmpty ? String(firstLine.prefix(60)) : trimmedTitle
+        let body = trimmedText
         let ok: Void? = app.perform(title: L("Not eklenemedi"), context: "kaynak.not") {
             _ = try app.store?.addTextSource(brandId: brand.id, kind: .note, title: t, body: body.isEmpty ? t : body)
         }
-        if ok != nil { done() }
+        if ok != nil { done() } else { finished = false }
     }
 }
 
@@ -284,32 +340,50 @@ struct FileDrop: ViewModifier {
 }
 
 
-/// Marka künyesi (Özet'in üstü): marka renginde yumuşak zeminli geniş kart: büyük avatar, ad, sektör ve tanım.
-struct BrandHero: View {
+/// Marka tanımı (Özet'in üstü, onay bandından sonra): düz, ikincil metin; en çok 2 satır, tam metin ipucunda.
+/// Ad araç çubuğunda, sektör pencere alt başlığında olduğundan burada tekrarlanmaz. Tanım yoksa "Ekle" bağlantısı.
+/// Yalnız örnek markada, Özet'in üstünde sakin bir bilgi şeridi: bunun örnek olduğunu ve AI'sız raporu söyler; "Arşivle…"
+/// mevcut arşiv onayını açar (normal arşiv yolu).
+struct SampleBrandBanner: View {
+    @Environment(AppModel.self) private var app
+    let brand: Brand
+    @State private var archiving = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Design.Space.s) {
+            Image(systemName: "info.circle").foregroundStyle(.secondary).accessibilityHidden(true)
+            Text(L("Bu bir örnek markadır. Rapor sekmesinde yapay zekâsız PDF raporu görebilirsin."))
+                .font(Design.Font.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: Design.Space.m)
+            Button(L("Rapora git")) { app.brandTab = .report }.buttonStyle(.text)
+            Button(L("Arşivle…")) { archiving = true }.buttonStyle(.text)
+        }
+        .padding(.horizontal, Design.Space.m).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).fill(Design.panel))
+        .overlay(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).strokeBorder(Design.line))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L("Örnek marka"))
+        .brandArchiveConfirmation(brand: archiving ? brand : nil, isPresented: $archiving)
+    }
+}
+
+struct BrandSummaryLine: View {
     @Environment(AppModel.self) private var app
     let brand: Brand
 
     var body: some View {
-        let current = (try? app.store?.brand(brand.id)) ?? brand
-        let tint = BrandTintStyle(key: brand.id)
-        HStack(alignment: .center, spacing: 18) {
-            BrandAvatar(name: current.name, tintKey: brand.id, selected: true, size: 64)
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
-                    Text(current.name).font(.system(size: 28, weight: .bold)).tracking(-0.6).lineLimit(1).accessibilityAddTraits(.isHeader)
-                    if !current.sector.isEmpty { Pill(text: current.sector, tint: AnyShapeStyle(tint)) }
-                }
-                Text(current.summary.isEmpty ? L("Marka tanımı henüz yok. Marka Bilgileri'nden ekleyebilirsin.") : current.summary)
-                    .font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(2).lineSpacing(2)
+        let summary = (app.read(or: brand) { try $0.brand(brand.id) }).summary
+        if summary.isEmpty {
+            HStack(spacing: Design.Space.s) {
+                Text(L("Marka tanımı yok.")).font(Design.Font.body).foregroundStyle(.secondary)
+                Button(L("Ekle")) { app.brandTab = .info }
+                    .buttonStyle(.plain).font(Design.Font.body.weight(.medium)).foregroundStyle(.primary)
+                    .accessibilityHint(L("Marka Bilgileri'ni açar"))
             }
-            Spacer(minLength: 0)
+        } else {
+            Text(summary).font(Design.Font.body).foregroundStyle(.secondary).lineLimit(2).lineSpacing(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help(summary)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous).fill(tint.opacity(0.10))
-        )
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(tint.opacity(0.22)))
-        .accessibilityElement(children: .combine)
     }
 }

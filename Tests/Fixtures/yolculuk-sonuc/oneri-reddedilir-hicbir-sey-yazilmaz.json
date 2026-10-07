@@ -1,0 +1,39 @@
+{
+  "adimlar" : [
+    {
+      "ad" : "Marka aç",
+      "cikti" : "marka açıldı: Örnek Kafe Zinciri",
+      "eylem" : "markaAc",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 1
+    },
+    {
+      "ad" : "Asistan iki görev önersin",
+      "cikti" : "araçlar: gorev_oner → gorev_oner; reddedilen: yok; bekleyen öneri: 2",
+      "eylem" : "asistan",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 2
+    },
+    {
+      "ad" : "İlk öneriyi onayla",
+      "cikti" : "onaylandı: createTask",
+      "eylem" : "onayla",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 3
+    },
+    {
+      "ad" : "Kalan öneriyi reddet",
+      "cikti" : "reddedildi: createTask",
+      "eylem" : "reddet",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 4
+    }
+  ],
+  "gecti" : true,
+  "neden" : "tüm adımlar tuttu",
+  "yolculuk" : "oneri-reddedilir-hicbir-sey-yazilmaz"
+}

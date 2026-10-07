@@ -2,7 +2,7 @@ import AppKit
 import MarkaCore
 import SwiftUI
 
-/// İlk açılış: tek ekran (plan §4). Kısa başlık, tek cümle, "Marka adı", *Başla*. Pencerenin tamamını kaplar (sayfa değil).
+/// İlk açılış: tek ekran (plan §4). Kısa başlık, tek cümle, "Marka adı", *Başla*; altında ikincil "Örnek markayla gez". Pencerenin tamamını kaplar (sayfa değil).
 /// Eski görev listesi içe aktarımı buradan kalktı; Ayarlar › Veri'de.
 struct OnboardingView: View {
     @Environment(AppModel.self) private var app
@@ -12,18 +12,19 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 28) {
             VStack(spacing: 10) {
-                Image(systemName: "square.stack.3d.up.fill").font(.system(size: 40)).foregroundStyle(Design.accent)
+                Image(systemName: "square.stack.3d.up.fill").font(Design.Icon.hero).foregroundStyle(Design.accent)
                     .accessibilityHidden(true)
-                Text(L("Workspace AI'a hoş geldin")).font(.system(size: 26, weight: .bold)).tracking(-0.5)
+                Text(L("Workspace AI'a hoş geldin")).font(Design.Font.title.weight(.bold)).tracking(-0.5)
                     .multilineTextAlignment(.center).accessibilityAddTraits(.isHeader)
                 Text(L("Bir markaya bakınca ne yapıldığını, ne beklediğini ve müşteriye ne gideceğini gör."))
-                    .font(.system(size: 14)).foregroundStyle(.secondary).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                    .font(Design.Font.body).foregroundStyle(.secondary).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 18) {
-                point("sparkles", L("Asistana sor"), L("Yapay zekâ markanın görev, not ve dosyalarını okur; ne yapman gerektiğini söyler ve görev önerir."))
-                point("checkmark.seal", L("Burada onayla"), L("Asistanın önerdiği işler seni bekler. Onaylamadığın hiçbir şey kayda girmez."))
-                point("doc.text", L("Müşteriye raporla"), L("Haftalık rapor, doğrulanmış işlerden tek tıkla PDF olur."))
-                point("lock", L("Verin sende kalır"), L("Her şey bu Mac'te durur. Yapay zekâ yalnızca senin izin verdiğin yerde çalışır."))
+                // U-35: hangi maddenin yapay zekâ gerektirdiği etiketle söylenir; rapor ve yerel saklama AI'sız çalışır.
+                point("sparkles", L("Asistana sor"), L("Yapay zekâ markanın görev, not ve dosyalarını okur; ne yapman gerektiğini söyler ve görev önerir."), needsAI: true)
+                point("checkmark.seal", L("Burada onayla"), L("Asistanın önerdiği işler seni bekler. Onaylamadığın hiçbir şey kayda girmez."), needsAI: true)
+                point("doc.text", L("Müşteriye raporla"), L("Haftalık rapor, doğrulanmış işlerden tek tıkla PDF olur.") + " " + L("Biten işin iş kaydını kendin de yazabilirsin."), needsAI: false)
+                point("lock", L("Verin Mac'inde saklanır"), L("Veriler bu Mac'te yerel saklanır; yapay zekâyı açtığın markanın içeriği yalnız o marka için izin verdiğin sağlayıcıya gönderilir."), needsAI: false)
             }
             VStack(spacing: 12) {
                 InputField(title: L("İlk markanın adı"), text: $name, focus: $focused)
@@ -31,6 +32,7 @@ struct OnboardingView: View {
                 Button(action: start) { Text(L("Başla")).frame(maxWidth: .infinity) }
                     .actionPrimary().keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                sampleOption
             }
         }
         .frame(width: 440)
@@ -39,22 +41,53 @@ struct OnboardingView: View {
         .background(Design.windowBackground)
     }
 
-    private func point(_ symbol: String, _ title: String, _ detail: String) -> some View {
+    private func point(_ symbol: String, _ title: String, _ detail: String, needsAI: Bool) -> some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol).font(.system(size: 16, weight: .medium)).foregroundStyle(Design.accent).frame(width: 28, height: 28)
+            Image(systemName: symbol).font(Design.Icon.medium.weight(.medium)).foregroundStyle(Design.accent).frame(width: 28, height: 28)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 13, weight: .semibold))
-                Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Text(title).font(Design.Font.body.weight(.semibold))
+                    Pill(text: needsAI ? L("Yapay zekâ gerektirir") : L("Yapay zekâsız çalışır"),
+                         tint: needsAI ? AnyShapeStyle(Design.accent) : AnyShapeStyle(.secondary))
+                }
+                Text(detail).font(Design.Font.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
         .accessibilityElement(children: .combine)
     }
 
+    /// İkincil yol: ad sormadan örnek markayı açar (yapay zekâ gerekmez). Birincil eylem yine kendi markanı eklemektir.
+    private var sampleOption: some View {
+        VStack(spacing: 4) {
+            Button(action: startSample) { Text(L("Örnek markayla gez")).frame(maxWidth: .infinity) }
+                .actionSecondary()
+            Text(L("Örnek veriyle uygulamayı tanı; istediğin zaman arşivle."))
+                .captionStyle().multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 4)
+    }
+
+    func startSample() {
+        guard let created = app.perform(context: "ilk-acilis.ornek", { try app.store?.createSampleBrand() }), let brand = created else { return }
+        markOnboarded()
+        app.reloadBasics()
+        app.select(brand: brand.id, tab: .flow)
+        app.showOnboarding = false
+        app.showNewBrand = false
+    }
+
+    /// İlk açılış işareti yazılamazsa akış sürer (karşılama bir sonraki açılışta yeniden görünür); hata tanıya düşer.
+    private func markOnboarded() {
+        app.diagnostics.attempt(context: "ilk-acilis.isaret") {
+            try app.store?.setSetting("onboarded", ISO8601DateFormatter().string(from: Date()))
+        }
+    }
+
     func start() {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         guard let created = app.perform({ try app.store?.createBrand(name: name) }), let brand = created else { return }
-        try? app.store?.setSetting("onboarded", ISO8601DateFormatter().string(from: Date()))
+        markOnboarded()
         app.reloadBasics()
         app.select(brand: brand.id, tab: .flow)
         app.showOnboarding = false
@@ -114,7 +147,9 @@ struct JoiImportView: View {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .onAppear {
+            #if !MAS
             if analysis == nil, let dir = JoiTodoImporter.candidateDirectories().first { load(dir) }
+            #endif
         }
     }
 
@@ -164,7 +199,7 @@ struct JoiImportView: View {
         let snapshot = app.workspaceURL.appendingPathComponent("İçe aktarımlar/joi-todo \(Date().formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false)).replacingOccurrences(of: ":", with: "."))")
         result = app.perform(title: L("İçe aktarım başarısız"), context: "iceaktarim.joi") { try JoiTodoImporter().run(analysis, mapping: mapping, store: store, snapshotDirectory: snapshot) }
         if result != nil {
-            try? store.setSetting("onboarded", ISO8601DateFormatter().string(from: Date()))
+            app.diagnostics.attempt(context: "ilk-acilis.isaret") { try store.setSetting("onboarded", ISO8601DateFormatter().string(from: Date())) }
             app.reloadBasics()
         }
     }

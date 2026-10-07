@@ -1,28 +1,108 @@
 # Kullanım kılavuzu
 
-Marka Çalışma Alanı 0.2.1'in ekran ekran ayrıntılı anlatımı. Kısa tanıtım için [README](../README.md).
+Workspace AI 0.4.0 (eski adıyla Marka Çalışma Alanı / Brand Workspace) için ekran ekran anlatım. Kısa tanıtım için [README](../README.md). Burada yazılanlar kodda ve testlerde bulunan davranışlardır; gerçek pencerede tıklanarak tam denenmeyenler [bilinen sınırlar](bilinen-sinirlar.md) belgesindedir. Örneklerdeki adlar uydurmadır.
 
-## Bölümler
-- **Kenar çubuğu:** Bugün + markalar (her markada onay bekleyen sayısı — öneriler + klasördeki eklenmemiş dosyalar — vurgu renginde) + en altta "+ Marka". "+ Marka" (ya da ⇧⌘N) kenar çubuğunun altında tek bir alan açar: yer tutucu "Marka adı — ↩", sağında görünür *Ekle*; Enter da ekler, Esc vazgeçer; ayrı sayfa yok.
-- **Bugün** (⌘0): tüm etkin markalarda (arşivlenenler hariç), boşsa tek satır sade metinle (her listede aynı boş durum biçimi): **Onay bekliyor** (marka · "3 onay bekliyor" · *İncele* → o markanın onay sayfası; sayı kenar çubuğuyla aynı), **Geciken** (marka · görev · kırmızı tarih), **Bu hafta yapılan** (marka başına "12 görev bitti · 11 iş kaydı · 2 dosya" ve "11 doğrulanmadı"), **Karar bekleniyor** (marka başına açık *Karar bekleniyor* başlıkları). Her satır tek düğmedir ve kaydın yerine götürür: marka açılır, ilgili bölüme geçilir, kayıt sağ panelde açılır. Tek arama burada (⌘F): sonuçlar bölümlerin yerine, marka · tür · başlık (görev, iş kaydı, söz/talep/karar başlığında; dosya/not başlık ve içeriğinde); satır kaydı aynı biçimde yerinde açar.
-- **Marka ekranı:** başlıkta marka adı; sağda *Terminal* (açıkken seçili zeminli; ⌘J) ve *···* (Bilgiler ve AI izinleri…, Klasörü Finder'da göster, Dışa aktar…, Arşivle…). Onay bandı ve üç bölüm. Görsel dil: vurgu rengi yalnız birincil düğme, onay sayısı ve seçili sekme/satırda; tüm metin düğmeleri tek biçim (gövde rengi, üzerine gelince hafif zemin).
-  - **Onay bandı ve onay sayfası (onayın tek yeri):** onay bekleyen varsa sekmelerin üstünde "N onay bekliyor · İncele". Sayfada tek görünür cümle ("Onayladıkların eklenir; Akış'tan geri alabilirsin."), gruplu satırlar: Yapılacaklar · İş kayıtları · Notlar · **Dosyalar** (marka klasöründe henüz eklenmemiş dosyalar, klasöre göre yolla) · Hafıza güncellemeleri. Satırlar varsayılan seçili; terminal önerisinin başlığı ve son tarihi düzeltilebilir. *Seçilenleri onayla (N)*: **yalnız seçilenler** onaylanır (dosya olduğu gibi saklanır); **seçilmeyenler bekler kalır**, bant sayısında görünmeye devam eder. *Tümünü reddet…* ayrı ve onaylıdır (önerileri reddeder; klasördeki dosyalar listede kalır). *Vazgeç* (Esc). Onaylanan her öneri Akış'ta "Öneri onaylandı" satırı olur ve oradan tek tek geri alınır.
-  - **Akış** (⌘1) — ne yapıldı (onay istemez): günlere göre, en yeni üstte (son 200), tek satırlık öğeler: iş kaydı (doğrulanmamışsa sağda soluk "Doğrulanmadı"), biten görev ("Görev · Bitti"; iş kaydı bağlı olan görev yalnız iş kaydı satırıyla görünür), not, dosya, kapanan söz / karar bekleniyor / talep ("Söz · Bitti"), onaylanan öneri (hafıza güncellemesi dahil). Açık söz/talep/karar Akış'ta değil, Yapılacaklar'dadır. Satırda düğme yok: satıra tıklayınca sağda ayrıntı paneli; başlığında küçük *Kapat* (Esc, listenin boş yerine tıklama ve aynı satıra yeniden tıklama da kapatır). İş kaydında dolu sorular, bağlı dosyalar ve hemen altında *Düzenle* ile birincil *Doğrula* — **doğrulamanın tek yeri** (içerik görülerek; kural sağlanmıyorsa — "Ne yapıldı?" dolu ve en az bir dosya ya da görev bağlı — eksik orada yazar). *Düzenle* düz satırlı düzenleyiciyi açar (sorular, bağlı dosyalar, görev, tarih; doğrulanmış kayıt burada *Geri çek…*). Dosya/notta önizleme, *Arşivle*, *Aç*; onaylanan öneride *Geri al* (hafıza güncellemesi sayfanın önceki sürümüne döner). Üstte yalnız *Not ekle* (açıkken *Vazgeç*, Esc); dosya Akış'a sürüklenip bırakılır ya da marka klasörüne konur (klasördeki dosya onay sayfasına düşer). Boş Akış: "Henüz bir şey yok" + Claude'dan `oneriler/` klasörüne yazmasını isteyebileceğin ve dosya sürükleyebileceğin tek paragraf (bu akışın gerçek Claude oturumuyla denenmediği "Bilinen sınırlar"da).
-  - **Yapılacaklar** (⌘2) — ne bekliyor: tek liste — açık görevler, söz, karar bekleniyor, açık talep; gecikenler üstte, sonra son tarihe göre, tarihsizler sonda. Boş sütun boş kalır. Satır başındaki kutu tamamlar (Bitti); satır 1,5 saniye üstü çizili kalıp çıkar. Üstte solda görünür tür seçimi "Görev | Söz", yanında alan ("Yeni görev — ↩"; Enter ekler). Satıra tıklayınca sağ panelde satır içi düzenleme (başlık, notlar, durum, son tarih, sorumlu; alanlar üzerine gelince hafif zemin; Enter ya da alandan çıkınca kaydeder) ve altta *Sil…* (onaylı) ile *İptal et* — tek yer (sağ tık menüsü kalktı). Hedef, teklif, sözleşme ve önemli tarih burada değil, Bilgiler'de. "Bitenler Akış'ta görünür." yalnız boş durumda.
-  - **Rapor** (⌘3) — müşteriye ne gidecek: açılışta bu haftanın raporu, doğrulanmış iş kayıtlarından canlı önizleme (belge görünümü; boş bölüm gösterilmez, süre yoksa "Harcanan süre" yok). Raporun durumu *Taslak / Hazır* ("Onayla" fiili yalnız öneride). Başlık satırı tam genişlik: solda dönem menüsü (Bu hafta · Geçen hafta · Bu ay · Geçen ay), sağ kenarda *···* ve tek birincil düğme — taslakta **"Hazır, PDF al"** (raporu hazır işaretler ve filigransız PDF'i kaydeder; kaydetme panelinde vazgeçilirse taslak kalır), hazırken **"PDF"**. *···* menüsünde *Düzenle* ve *E-posta taslağı…* (yalnız hazır rapor; Mail'de taslak açar, göndermez). Düzenlerken giriş notu ve maddeler satır içi düzenlenir (metni silinen madde çıkar); markanın Claude/Codex izni varsa *AI ile özet* (özet varken aynı düğme *Özeti kaldır*), *Vazgeç* (Esc) ve birincil *Kaydet*. Rapor ilk PDF/e-posta anında ya da düzenlenince taslak sürüm olarak kaydedilir. Doğrulanmamış iş kayıtları, iş kaydı olmadan biten görevler ve (düzenlenmiş/hazır sürümde) sonradan değişen iş kayıtları önizlemenin üstünde **tek satırda** söylenir; eylemler aynı satırda (*Akış'ta gör*, *İş kayıtlarından yenile*). Maddeye tıklamak dayanağını Akış panelinde açar. Altta açılır **"Geçmiş" (tek yer)**: açık raporun sürümleri, paylaşımları ve markanın diğer kaydedilmiş raporları (tıklayınca açılır).
-- **··· › Bilgiler ve AI izinleri:** tek sayfa; *Profil* (ad, sektör, tanım), *AI izinleri* (Claude, Codex; varsayılan kapalı; "Uygulama içindeki rapor özeti yalnız izin verdiğin sağlayıcıyı kullanır. Terminal bu izne bağlı değildir."), *Kişiler*, *Projeler* (alan adı "Amaç") ve varsa salt okunur *Hedef, teklif ve tarihler* (terminal önerisiyle ya da eski sürümde gelen hedef/teklif/sözleşme/önemli tarih; iptal edilenler hariç). Düzenlenebilir satır üzerine gelince hafif zemin alır; tıklayınca yerinde düzenlenir (Enter/Kaydet kaydeder, Esc vazgeçer); ayrı düzenleyici sayfası yok.
-- **Terminal** (⌘J): marka klasöründe gerçek kabuk; başlıkta ad ve *Yana al / Alta al*. **Oturum marka başına yaşar:** terminali gizlemek (⌘J, başlıktaki *Terminal*), başka markaya ya da Bugün'e geçmek, paneli yana/alta almak ve yalıtım ayarını değiştirmek kabuğu (ve içinde çalışan Claude Code/Codex oturumunu) **sonlandırmaz**; geri dönünce aynı ekran ve aynı süreç görünür (SwiftTerm görünümü `AppModel`'deki önbellekten yeniden ebeveynlenir; `TerminalSessionCache`, `TerminalOturumTests`). Kabuk yalnız şu durumlarda biter: kullanıcı kabuktan çıkar (başlıkta "Kabuk kapandı." ve *Yeni oturum*), marka arşivlenir, uygulama kapanır — çalışan kabuk varsa kapanışta tek soru: "N terminalde çalışan oturum var; kapatılsın mı?". Sonlandırma kabuğun süreç grubuna SIGHUP, 2 saniye sonra hâlâ yaşıyorsa SIGKILL gönderir (etkileşimli kabuk SIGTERM'i yok sayar — ölçüldü). Marka yalıtımı açıkken (varsayılan; Ayarlar › Genel) `sandbox-exec` altında başlar: diğer markaların klasörleri ve uygulama verisi okunamaz, yazılamaz. Yalıtım ayarı değişince açık oturumlar başladıkları profille sürer, yeni açılan oturum yeni ayarla başlar; fark varsa terminal başlığında tek satırla söylenir. BAGLAM.md marka açılınca ve terminal her gösterildiğinde kendiliğinden yazılır.
-- **Terminalden öneri** (`oneriler/`): terminaldeki araç (Claude Code, Codex CLI) veri tabanına yazamaz; yaptıklarını marka klasöründeki `oneriler/<tarih>-<konu>.json` dosyasına yazar (şema BAGLAM.md'de; CLAUDE.md/AGENTS.md oraya yönlendirir). Uygulama dosyayı marka ekranı açıkken 3 saniyede bir tarar; dosyanın tüm öğeleri tek işlemde bekleyen öneri olarak veri tabanına yazılır, dosya `oneriler/islenmis/` altına taşınır ve sha256'sı kaydedilir (aynı içerik ikinci kez önerilmez). Onay sayfasında yalnız bir kısmı onaylanan dosyanın kalan öğeleri veri tabanında bekler (dosya yeniden okunmaz; test: `kismenOnaylananDosyaninBekleyenleriKalirDosyaYenidenOnerilmez`). Görevler (yapılacak ya da bitti), iş kayıtları ("Doğrulanmadı" olarak; bağlı dosyalar eklenir), söz/talep/karar kayıtları ve notlar seçilip düzeltilerek onaylanır; hepsi Akış'tan geri alınabilir.
-- **İlk açılış:** tek ekran — ilk markanın adı ve *Başla*. Eski görev listesinin içe aktarımı Ayarlar › Veri › İçe aktarım'da, bölümün içinde yerinde açılır.
-- **Ayarlar** (⌘,), iki sekme: *Genel* — Claude API anahtarı (kaydet ve doğrula; kayıtlıysa kaldır), Codex girişi (tarayıcıda; durum kendiliğinden yenilenir; aynı düğme çıkış yapar), terminalde marka yalıtımı (değişiklik yeni oturumlarda geçerli). *Veri* — konum (Finder'da göster), yedekler (şimdi yedekle; her satırda hep görünen *Geri yükle…*), arşivlenmiş markalar (hep görünen *Arşivden çıkar*), eski görev listesini içe aktar, tanı bilgisini kopyala (beta ölçümleri dahil). Model ve düşünme derinliği seçilmez: rapor özeti sabit varsayılan Claude modeliyle ve varsayılan derinlikle çalışır, Codex kendi varsayılan modelini kullanır; eski sürümde kaydedilmiş seçim yok sayılır.
-- **Menü ve kısayollar:** ⌘0 Bugün · ⌘1 Akış · ⌘2 Yapılacaklar · ⌘3 Rapor · ⌘J Terminal · ⌘F Ara · ⇧⌘N Yeni marka.
-- Kaldırılan ekranların (Masa ve uygulama içi sohbet, Bilgi sekmesi, sayaç, Ayarlar › Kullanım, kayıt sayfası, marka logosu) verisi veri tabanında durur; çekirdek (bilgi derleme, sayaç kayıtları, oturumlar, denetim geçmişi) değişmedi.
+> Eski sürümlerdeki gömülü terminal 0.3.0'da kaldırıldı; yerine yan Asistan paneli geldi. 0.2.1 dönemine ait terminal anlatımı bu kılavuzdan çıkarıldı.
+
+## Genel yapı
+
+Pencerenin solunda **kenar çubuğu**, ortasında seçili ekran, sağında isteğe bağlı **Asistan paneli** (⌘J) bulunur. Kenar çubuğu üç parçadır:
+
+- **Bugün** (⌘0): tüm etkin markalarda tek bakış.
+- **Stüdyo** (⌘9): kendi şirketinin iş alanı.
+- **Markalar**: her marka bir satırdır; onay bekleyen sayısı (öneriler + klasörde henüz eklenmemiş dosyalar) satırın yanında görünür. En altta *+ Marka* (⇧⌘N).
+
+Arayüz Türkçe ve İngilizcedir. Görünüm modu (Açık / Koyu / Sistem) Görünüm menüsünden ya da Ayarlar'dan seçilir.
+
+## Bugün
+
+Tüm etkin markalarda (arşivlenenler hariç) dört liste: **Onay bekliyor** (marka, sayı, *İncele*), **Geciken**, **Bu hafta yapılan** ve **Karar bekleniyor** (müşteriden beklenen kararlar). Boş liste tek satır sade metinle söylenir. Her satır kaydın yerine götürür: marka açılır, ilgili sekmeye geçilir. Üstteki arama (⌘F) tüm markalarda kayıt başlıklarına bakar.
+
+## Marka ekranı
+
+Başlıkta marka adı; sağda Asistan düğmesi ve *···* menüsü. Sekmeler (⌘1 … ⌘6 sırasıyla):
+
+### Özet (⌘1)
+Markanın tek bakışlık özeti ve **Akış**: günlere göre, en yeni üstte (son 200 öğe), tek satırlık öğeler: iş kaydı (doğrulanmamışsa "Doğrulanmadı"), biten görev, not, dosya, kapanan söz / karar / talep ve onaylanan öneri. Satıra tıklayınca sağda ayrıntı paneli açılır; iş kaydı yalnız orada, içeriği görülerek doğrulanır. Onaylanan öneride *Geri al* vardır. Üstte *Not ekle*; dosya Akış'a sürüklenebilir ya da marka klasörüne konabilir (klasördeki dosya onay sayfasına düşer).
+
+### Görevler (⌘2)
+Tek liste: açık görevler, sözler, karar bekleyenler, açık talepler. Dört görünüm: **Liste**, **Pano** (durum sütunları; kartı sürükleyip bırakarak durum değiştirilir, ⌘Z geri alır), **Gantt** ve **Takvim** (aynı görevlerin zaman görünümü; teslim tarihine göre). Satır başındaki kutu tamamlar; satıra tıklayınca sağ panelde başlık, notlar, durum, son tarih ve sorumlu satır içinde düzenlenir, altta *Sil…* (onaylı). Tamamlananlar ⇧⌘H ile gösterilir/gizlenir. Ekleme alanı "Yeni görev — ↩" (⌘N de görev ekler); tür seçimiyle söz de eklenir.
+
+**Zamanlayıcı:** satırdaki zamanlayıcı düğmesiyle o göreve süre tutulur. Çalışırken menü çubuğunda canlı süre görünür; çentikli MacBook'ta ayrıca çentikten sarkan küçük bir **çentik adası** gösterilir (Ayarlar › Zamanlayıcı › *Çentikte göster* ile kapatılır; *Çentikten gizle* sayacı durdurmaz). Çentiğin fiziksel görünümü gerçek donanımda denenmedi.
+
+### Dosyalar (⌘3)
+Markanın malzemeleri, belgeleri ve bağlantıları: Galeri ya da Liste görünümü, arama, *Dosya ekle*, *Bağlantı ekle*. Eklenenler markanın **değişmez kaynaklarıdır**: silinmez, yalnızca arşivlenir.
+
+### Marka Bilgileri (⌘4)
+Asistanın okuduğu ortak bağlam. Dört bölüm:
+
+- **Profil:** marka ne yapıyor, ne satıyor, kimin için. Bölümler dolu/eksik gösterilir; doldurduğun bölümler asistanın bağlamına girir. *Yapay zekâ gözüyle bak* asistanın okuyacağı bağlamı gösterir (marka klasöründeki `BAGLAM.md` da bu bağlamdan yazılır). *Asistana sor* sohbette taslak çıkarır; kaydı sen yaparsın.
+- **Hedefler:** görevlerin nedenini ve beklenen çıktıyı netleştirir. İlerleme çubukları bağlı görevlerin tamamlanmasını gösterir; ticari sonuç iddiası taşımaz.
+- **Kişiler ve projeler:** kişi adı, rolü, iletişim bilgileri ve projeler (alan adı "Amaç"). Kişilerin iletişim bilgileri yapay zekâya gönderilen bağlama eklenmez.
+- **Ayrıntılar ve izinler:** sektör, kısa tanım ve **AI izinleri** (Claude, Codex). İzin markaya özeldir ve varsayılan olarak kapalıdır; yalnız izin verdiğin sağlayıcıya o markanın içeriği gider.
+
+### Finans (⌘5)
+Danışmanlık ücreti, ödeme planı ve çalışma bütçesi: ödeme satırları (planlandı / bekliyor / tahsil edildi), bu ay tahsil edilen, bu ay beklenen, toplam bekleyen ve bu ay çalışma süresi. Danışmanlık ilişkisini **takip eder**; muhasebe, banka bağlantısı ya da otomatik tahsilat yapmaz.
+
+### Rapor (⌘6)
+Müşteriye ne gidecek: dönem menüsüyle (bu hafta, geçen hafta, bu ay, geçen ay) **doğrulanmış iş kayıtlarından** canlı önizleme. Her maddenin bir dayanağı vardır; maddeye tıklamak dayanağı açar. Durum *Taslak / Hazır*. Taslakta birincil düğme **Hazır, PDF al** (raporu hazır işaretler, filigransız PDF kaydeder; kaydetme panelinde vazgeçilirse taslak kalır), hazırken **PDF**. *···* menüsünde *Düzenle* ve *E-posta taslağı…* (Mail'de taslak açar, göndermez; otomatik gönderim yoktur). Markada Claude/Codex izni varsa *AI ile özet* kullanılabilir; dayanak göstermeyen cümle atılır. Doğrulanmamış iş kayıtları ve iş kaydı olmadan biten görevler önizlemenin üstünde tek satırda söylenir. Altta açılır **Geçmiş**: sürümler, paylaşımlar, markanın diğer raporları.
+
+### *···* menüsü
+Klasörü Finder'da göster, Dışa aktar…, Arşivle… ve onay sayfası.
+
+## Onay sayfası (onayın tek yeri)
+
+Onay bekleyen varsa sekmelerin üstünde "N onay bekliyor · İncele" bandı çıkar. Sayfada gruplu satırlar: Görevler, iş kayıtları, notlar, **Dosyalar** (marka klasöründe henüz eklenmemiş dosyalar) ve hafıza güncellemeleri. Satırlar varsayılan seçilidir; başlık ve son tarih düzeltilebilir. *Seçilenleri onayla (N)* **yalnız seçilenleri** uygular; **seçilmeyenler bekler** ve sayıda görünmeye devam eder. *Tümünü reddet…* ayrı ve onaylıdır. *Vazgeç* (Esc) hiçbir şey yapmaz. Onaylanan her öneri Akış'ta "Öneri onaylandı" satırı olur ve oradan *Geri al* ile geri alınır.
+
+Menü çubuğu simgesi de bekleyen onayları marka başına gösterir ve ilgili markanın onay sayfasını açar.
+
+## Asistan paneli (⌘J)
+
+Sağdaki yan panel. Marka seçiliyken o markanın **kendi kayıtlarını okur** (görev, not, dosya, çalışma kayıtları, bilgi sayfaları) ve ne yapılacağını söyler. Sağlayıcı Ayarlar'da bağlanır: **Claude API anahtarı** (senden alınır; Keychain'de durur, kullanım başına ücretlidir) ya da isteğe bağlı **Codex** girişi. Marka için yapay zekâ izni kapalıysa panel izin ister (*İzin ver* / *Reddet*); izin verilmeden o markanın içeriği hiçbir sağlayıcıya gitmez.
+
+- **Önerir, yazmaz.** Asistan yalnızca öneri araçlarını kullanır: görev, görevi tamamla, iş kaydı, marka kaydı (söz/talep/karar), çıktı dosyası, bilgi sayfası güncellemesi. Önerilen her şey onay sayfasına düşer; asistan veri tabanına kendisi yazamaz. Araçlar başka markanın kimliğini reddeder.
+- **Ekip üyesi rolüyle sohbet.** "Kim olarak çalışsın?" ile ekipteki bir üyenin rolü seçilir; üyenin görev tarifi ve yetenekleri o sohbetin bağlamına girer. Rol yalnız tek marka sohbetinde kullanılır.
+- **Tüm markalar sohbeti.** Genel bakış için tüm markalar kapsamı vardır.
+- **Çalışan öner.** Ekibe yeni **yapay zekâ çalışan** önerisi (`calisan_oner`) **yalnız Stüdyo sohbetinde** verilebilir; insan eklenemez. Öneri onaylanınca ekibe girer, geri alınınca arşivlenir.
+
+Canlı Claude yanıtı gerçek bir anahtarla denenmedi (bkz. bilinen sınırlar).
+
+## Stüdyo
+
+Kendi şirketin de bir iş alanıdır; marka ekranıyla aynı sekmeler vardır, yalnız *Marka Bilgileri* sekmesi **Şirket** adını alır. İlk açılışta şirket adıyla kurulur. *Şirket* sekmesi:
+
+- **Genel:** ad, slogan, web sitesi, kuruluş, misyon. Bu bilgiler, yapay zekâya izin verdiğin her markanın bağlamına girer; müşteri verisi içermez.
+- **Hizmetler:** sunduğun hizmetler (sürüyor / planlanan / durduruldu); yapay zekâ müşteriye ne sattığını buradan öğrenir.
+- **Ekip:** insanlar ve **yapay zekâ çalışanlar** (ad, unvan, kıdem: stajyerden direktöre, bağlı olduğu kişi, görev tarifi, yetenekleri). Yapay zekâ çalışan **rol tanımıdır**: atandığı markanın yapay zekâ bağlamına girer, kendi başına çalışmaz; ürettiği her şey öneridir ve onayı sendedir. Arşivlenen üye şemadan çıkar ve astları onun yöneticisine bağlanır.
+- **Şema:** ekibin organizasyon şeması.
+- **Yetenekler:** yetenek kütüphanesi. Yetenek, çalışana verdiğin küçük bir çalışma yöntemidir (`SKILL.md` biçimi: `name` ve `description` başlığı + yönergeler). *Hazır paket yükle*, *SKILL.md içe aktar…* ya da *Yetenek ekle*; *SKILL.md kopyala* ile dışa verilir. **Yetenek yetki vermez:** yapay zekâ çalışan yeteneğiyle de yalnızca öneri üretir.
+
+## Komut paleti (⌘K) ve menü çubuğu
+
+- **⌘K:** marka, bölüm ya da komut ara ("Markaya git", *Görev ekle*, *Yeni marka…*, Asistanı göster/gizle, Bugün) ve "Yapay zekâya sor: Ne yapmalıyım?".
+- **Menü çubuğu paneli:** Ayarlar › Genel › *Menü çubuğunda göster* ile açılır. Bekleyen onaylar marka başına listelenir; çalışan zamanlayıcıyı durdurabilirsin. Açıkken pencereyi kapatsan da uygulama çalışmaya devam eder. Panelin gerçek menü çubuğunda tıklanarak denenmediği bilinen sınırlarda yazılıdır.
+
+## Marka klasörü ve `oneriler/` dosyaları
+
+Her markanın bir klasörü vardır. Klasöre konan dosyalar onay sayfasına düşer. Uygulama ayrıca marka klasöründeki `oneriler/<tarih>-<konu>.json` dosyalarını da okuyup bekleyen öneriye çevirir (şema `BAGLAM.md` içinde; marka ekranı açıkken 3 saniyede bir taranır; işlenen dosya `oneriler/islenmis/` altına taşınır). Bu köprü 0.2.x'ten kalmadır; **eski** terminalin kaldırılmasıyla ilgisi yoktur, kendi terminalinde çalıştırdığın bir aracın bu klasöre yazması yeterlidir. Gerçek bir Claude Code/Codex CLI oturumunun bu dosyayı talimata uygun yazdığı denenmedi.
+
+## Ayarlar (⌘,)
+
+- **Genel:** Claude API anahtarı (*Kaydet ve doğrula*; kayıtlıysa *Kaldır*), Codex girişi (tarayıcıda; durum kendiliğinden yenilenir), zamanlayıcı (*Çentikte göster*), görünüm modu, menü çubuğu.
+- **Veri:** konum (*Finder'da göster*), yedekler (*Şimdi yedekle*; her satırda *Geri yükle…*), arşivlenmiş markalar (*Arşivden çıkar*), eski görev listesini içe aktar, *Tanı bilgisini kopyala* (marka adı, içerik ve dosya yolu içermez; hiçbir yere kendiliğinden gönderilmez). Her gün ilk açılışta otomatik yedek alınır, son 14'ü saklanır; geri yüklemeden ve veri tabanı geçişinden önce mevcut veri ayrıca yedeklenir.
+
+## Menü ve kısayollar
+
+⌘0 Bugün · ⌘9 Stüdyo · ⌘1 … ⌘6 marka sekmeleri · ⌘J Asistan · ⌘K Komut paleti · ⌘F Ara · ⌘N Yeni görev · ⇧⌘N Yeni marka · ⇧⌘H Tamamlananları göster/gizle · ⌘, Ayarlar.
 
 ## Güvence kuralları (kodda zorunlu)
-- Ham dosya ve not içeriği SQL tetikleyicisiyle değiştirilemez; yalnızca arşivlenir.
-- AI veri değiştirmez, öneri üretir. Öneriler kullanıcı onayıyla uygulanır ve geri alınabilir.
-- Oturumun markası sonradan değişmez (SQL tetikleyicisi). Araçlar başka markanın kimliğini reddeder. İzin verilmeyen sağlayıcıya istek gitmez.
-- Rapordaki "yapılan işler" yalnızca doğrulanmış iş kayıtlarından gelir. Her maddenin bir dayanağı olmalı. AI özet cümlesi geçerli madde referansı taşımıyorsa atılır.
-- Her yazma işlemi denetim olayı bırakır. Günlük otomatik yedek alınır; geri yüklemeden önce mevcut veri yedeklenir.
-- Terminal öneri dosyası (`oneriler/*.json`) yalnızca bulunduğu markaya öneri olur; dosyadaki marka adı/kimliği yok sayılır. Sembolik bağ, marka klasörü dışını gösteren yol, 256 KB'tan büyük dosya, 50'den fazla öğe ve şema dışı değer reddedilir; reddedilen dosyadan hiçbir öneri oluşmaz. Başka markanın görev/dosya kimliği reddedilir. Bağlı dosyaların kaydı yalnızca onayla oluşur.
-- Tanı bilgisi (Ayarlar › Veri › *Tanı bilgisini kopyala*) yalnızca sürüm, macOS, mimari, dil, kayıt sayıları, AI bağlantı durumu, son 20 hatanın türü ve yeri (sabit anahtar) ile beta ölçümlerini taşır. Hata mesajı, marka adı, dosya/not metni, e-posta ve dosya yolu yazılmaz; test ayırt edici içerikle bunu doğrular. Son 200 hata çalışma alanındaki `tani-kayitlari.json` dosyasında durur ve hiçbir yere kendiliğinden gönderilmez.
+
+1. **Marka yalıtımı.** Her okuma ve yazma marka kimliğiyle kapsanır. Asistan araçları başka markanın kimliğini reddeder; oturumun markası sonradan değişmez (SQL tetikleyicisi). İzin verilmeyen sağlayıcıya istek gitmez.
+2. **Kaynak değişmez.** Ham dosya ve not içeriği SQL tetikleyicisiyle değiştirilemez; yalnızca arşivlenir.
+3. **AI veri değiştirmez, öneri üretir.** Öneriler kullanıcı onayıyla uygulanır ve geri alınabilir.
+4. **Rapor maddesi dayanaksız olamaz.** Rapordaki "yapılan işler" yalnızca doğrulanmış iş kayıtlarından gelir; AI özet cümlesi geçerli madde referansı taşımıyorsa atılır.
+5. **Her yazma denetim olayı bırakır.** Günlük otomatik yedek alınır; geri yüklemeden önce mevcut veri yedeklenir.
+6. **İçerik Mac'ten yalnızca izin verilen sağlayıcıya gider.** Veriler Mac'te yerel saklanır; yapay zekâyı açtığın markanın içeriği, yalnız o marka için izin verdiğin sağlayıcıya (Anthropic/Codex) gönderilir. Tanı bilgisi yalnızca sürüm, macOS, mimari, dil, kayıt sayıları, AI bağlantı durumu, hataların türü ve beta ölçümlerini taşır; hata mesajı, marka adı, dosya/not metni, e-posta ve dosya yolu yazılmaz (test ayırt edici içerikle doğrular). Son 200 hata çalışma alanındaki `tani-kayitlari.json` dosyasında durur ve hiçbir yere kendiliğinden gönderilmez.
+7. **Yapmadığımızı vaat etmeyiz.** Doğrulanmayan şey [bilinen sınırlar](bilinen-sinirlar.md) belgesinde ve README "Durum" bölümünde açıkça yazılır.
+
+`oneriler/*.json` dosyası yalnızca bulunduğu markaya öneri olur (dosyadaki marka adı yok sayılır); sembolik bağ, marka klasörü dışını gösteren yol, 256 KB'tan büyük dosya, 50'den fazla öğe ve şema dışı değer reddedilir.

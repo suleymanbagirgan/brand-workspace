@@ -1,0 +1,22 @@
+// Derlenmeyen örnek: tasarim-denetimi.py her ihlal türünden en az bir tane görmelidir. Uydurma içerik.
+import SwiftUI
+
+struct OrnekIhlal: View {
+    var body: some View {
+        VStack(spacing: 6) {                                   // bosluk (6, 4'ün katı değil)
+            Text("Deneme Yangın panosu")                       // metin-L
+            Text(verbatim: "temiz").foregroundStyle(Design.accent)
+            Text(L("Temiz metin"))
+            Rectangle().fill(Color(red: 0.2, green: 0.4, blue: 0.9))   // sabit-renk
+                .clipShape(RoundedRectangle(cornerRadius: 9))          // kose (9 izinli değil)
+            Text(L("Boyut")).font(.system(size: 17))           // sabit-yazi (gerekçesiz)
+            // sabit-boyut: gerekçeli, sayılmaz.
+            Text(L("Gerekçeli")).font(.system(size: 34))
+            Button { } label: { Image(systemName: "trash") }   // simge-dugme (etiketsiz)
+            Button { } label: { Image(systemName: "plus") }.accessibilityLabel("Ekle")
+            Text(L("Dolgu")).padding(.horizontal, 8)
+            Text(L("Temiz")).padding(.top, 6)                  // bosluk (6)
+        }
+        .padding(16)
+    }
+}

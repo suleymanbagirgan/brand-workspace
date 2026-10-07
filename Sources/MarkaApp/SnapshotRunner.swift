@@ -7,13 +7,13 @@ import SwiftUI
 /// Pencere çizimi (`cacheDisplay`/katman) kenar çubuğunu, liste/kaydırma içeriğini ve koyu bölmeleri boş veriyordu (İ3 bulgu 2).
 /// Bunun yerine her ekran `ImageRenderer` ile ayrı çizilir: aynı SwiftUI görünümleri, `\.isSnapshot` açıkken kaydırma
 /// kapsayıcısız (`PageScroll`), `\.colorScheme` ve AppKit çizim görünümü (`NSAppearance`) birlikte ayarlanarak.
-/// Pencere çerçevesi, araç çubuğu ve terminal (AppKit görünümü) çizilmez. Ekran kaydı izni gerekmez.
+/// Pencere çerçevesi ve araç çubuğu çizilmez. Ekran kaydı izni gerekmez.
 ///
 /// Yalnızca geçici veri alanıyla çalıştır (`MARKA_WORKSPACE` + `MARKA_FOLDERS`); bu kip tercih yazmaz, Keychain okumaz (D1).
 @MainActor
 enum SnapshotRunner {
     static func runIfRequested(app: AppModel) {
-        guard let dir = ProcessInfo.processInfo.environment["MARKA_SNAPSHOT"] else { return }
+        guard let dir = DevHook.value("MARKA_SNAPSHOT") else { return }
         let out = URL(fileURLWithPath: dir, isDirectory: true)
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         Task { @MainActor in
@@ -36,9 +36,6 @@ enum SnapshotRunner {
             }
             print("SNAPSHOT: \(written.count) dosya → \(out.path)")
             for w in written { print("  \(w)") }
-            if ProcessInfo.processInfo.environment["MARKA_TERMINAL_PROVA"] != nil {
-                for line in await terminalProva(app: app) { print(line) }
-            }
             NSApp.terminate(nil)
         }
     }
@@ -76,6 +73,14 @@ enum SnapshotRunner {
             for entry in [("16-dosyalar", BrandTab.files), ("17-marka-bilgileri", .info), ("18-finans", .finance)] {
                 list.append(Screen(name: entry.0, setup: { app.select(brand: brand.id, tab: entry.1) }, view: { AnyView(shell { DetailView() }) }))
             }
+            // Marka Bilgileri: bölümleri eksik ikinci marka ve "yapay zekâ gözüyle" önizlemesi açık hâl.
+            if let other = app.customerBrands.first(where: { $0.id != brand.id }) {
+                list.append(Screen(name: "17b-marka-bilgileri-eksik", setup: { app.select(brand: other.id, tab: .info) }, view: { AnyView(shell { DetailView() }) }))
+                list.append(Screen(name: "17c-marka-bilgileri-onizleme", size: CGSize(width: 1500, height: 1300), setup: { app.select(brand: other.id, tab: .info) },
+                                   view: { AnyView(shell { brandPage(other) { BrandProfileView(brand: other, showContext: true) } }) }))
+            }
+            list.append(Screen(name: "17d-marka-bilgileri-eksikler", size: CGSize(width: 1500, height: 1300), setup: { app.select(brand: brand.id, tab: .info) },
+                               view: { AnyView(shell { brandPage(brand) { BrandProfileView(brand: brand, filter: .missing) } }) }))
             list.append(Screen(name: "14-gantt", setup: { app.select(brand: brand.id, tab: .todo) },
                                view: { AnyView(shell { brandPage(brand) { TodoView(brand: brand, mode: .gantt) } }) }))
             list.append(Screen(name: "14b-takvim", setup: { app.select(brand: brand.id, tab: .todo) },
@@ -102,7 +107,23 @@ enum SnapshotRunner {
             list.append(Screen(name: "12-yeni-marka", setup: { app.select(brand: brand.id, tab: .flow); app.showNewBrand = true },
                                view: { AnyView(shell { DetailView() }) }))
         }
+        // Örnek marka (varsa): bilgi şeridi olan Özet ve yapay zekâsız rapor.
+        if let sampleId = try? app.store?.sampleBrandId(), let sample = app.brands.first(where: { $0.id == sampleId }) {
+            list.append(Screen(name: "30-ornek-ozet", setup: { app.select(brand: sample.id, tab: .flow) }, view: { AnyView(shell { DetailView() }) }))
+            list.append(Screen(name: "31-ornek-rapor", size: CGSize(width: 1280, height: 1100), setup: { app.select(brand: sample.id, tab: .report) },
+                               view: { AnyView(shell { DetailView() }) }))
+            list.append(Screen(name: "32-ornek-asistan", size: CGSize(width: 1600, height: 1000),
+                               setup: { app.select(brand: sample.id, tab: .flow); app.showAssistant = true },
+                               view: { AnyView(shell { DetailView() }) }))
+        }
         // Ayarlar (iki sekme) ve ilk açılış: markadan bağımsız.
+        // Stüdyo (kendi şirketimiz): Genel, Ekip, Yetenekler, Şema.
+        if let own = app.ownBrand {
+            for (i, entry) in [("genel", CompanyView.Tab.about), ("ekip", .team), ("yetenekler", .skills), ("sema", .chart)].enumerated() {
+                list.append(Screen(name: "2\(i)-studyo-\(entry.0)", size: CGSize(width: 1500, height: 1100), setup: { app.select(brand: own.id, tab: .info) },
+                                   view: { AnyView(shell { brandPage(own) { CompanyView(tab: entry.1) } }) }))
+            }
+        }
         list.append(Screen(name: "09-ayarlar-genel", size: CGSize(width: 620, height: 540), view: { AnyView(GeneralSettings()) }))
         list.append(Screen(name: "10-ayarlar-veri", size: CGSize(width: 620, height: 640), view: { AnyView(DataSettings()) }))
         list.append(Screen(name: "11-ilk-acilis", size: CGSize(width: 980, height: 640), view: { AnyView(OnboardingView()) }))
@@ -131,99 +152,6 @@ enum SnapshotRunner {
             Divider()
             detail().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-    }
-
-    // MARK: Terminal oturumu provası (U9)
-
-    /// `MARKA_TERMINAL_PROVA=1` ile: gerçek `DetailView` ekran dışı bir pencerede sürülür ve marka terminali oturumunun
-    /// gizleme, yana alma, başka markaya ve Bugün'e geçişte **yaşadığı** gerçek kabukla ölçülür: süreç kimliği canlı mı,
-    /// aynı görünüm mü, kabuktaki değişken korunuyor mu (kabuk marka klasörüne dosya yazar). Sonra arşivlemenin ve kapanışın
-    /// süreci bitirdiği ölçülür. Yalnız geçici veri alanında çalıştır (`SHELL=/bin/sh` önerilir: kullanıcının zsh
-    /// başlangıç dosyaları çalışmasın). Tıklama/klavye yerine model durumu değiştirilir; pencere ekranda görünmez.
-    static func terminalProva(app: AppModel) async -> [String] {
-        var out: [String] = []
-        func check(_ ok: Bool, _ text: String) { out.append("TERMINAL PROVA: " + (ok ? "✓ " : "✗ ") + text) }
-        guard app.brands.count >= 3, let folders = app.folders else { return ["TERMINAL PROVA: ✗ en az üç marka gerekir"] }
-        let (a, b, c) = (app.brands[0], app.brands[1], app.brands[2])
-        let host = NSHostingView(rootView: DetailView().environment(app).frame(width: 1000, height: 700))
-        let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: 1000, height: 700), styleMask: [.borderless],
-                              backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.contentView = host
-        window.orderFrontRegardless()
-        func step(_ change: () -> Void) async {
-            change()
-            host.layoutSubtreeIfNeeded()
-            try? await Task.sleep(for: .milliseconds(700))
-            host.layoutSubtreeIfNeeded()
-        }
-        func alive(_ pid: pid_t) -> Bool { pid > 0 && kill(pid, 0) == 0 }
-
-        app.terminalOnSide = false
-        await step { app.select(brand: a.id, tab: .flow); app.showAssistant = true }
-        guard let sessionA = app.terminals.existing(a.id) else {
-            window.close()
-            return ["TERMINAL PROVA: ✗ A markasının oturumu başlamadı"]
-        }
-        let pidA = sessionA.pid
-        func where_(_ s: TerminalSession) -> String {
-            "pencere: \(s.view.window === window ? "bu" : (s.view.window == nil ? "yok" : "başka")), kap: \(s.view.superview.map { String(describing: type(of: $0)) } ?? "yok")"
-        }
-        check(alive(pidA) && sessionA.view.window != nil, "A oturumu başladı ve pencerede (pid \(pidA), \(where_(sessionA)))")
-        sessionA.view.send(txt: "PROVA=ayni-kabuk\n")
-        try? await Task.sleep(for: .milliseconds(500))
-
-        await step { app.terminalOnSide = true }
-        check(app.terminals.existing(a.id) === sessionA && alive(pidA) && sessionA.view.window != nil, "yana alınca aynı oturum, süreç canlı (\(where_(sessionA)))")
-        await step { app.showAssistant = false }
-        check(alive(pidA) && sessionA.view.window == nil, "gizleyince süreç canlı, görünüm pencereden çıktı")
-        await step { app.showAssistant = true; app.select(brand: b.id, tab: .flow) }
-        let sessionB = app.terminals.existing(b.id)
-        check(sessionB != nil && sessionB !== sessionA && alive(pidA), "B'ye geçince B'nin kendi oturumu, A canlı")
-        await step { app.selection = .today }
-        check(alive(pidA) && (sessionB.map { alive($0.pid) } ?? false), "Bugün'e geçince iki oturum da canlı")
-        await step { app.select(brand: a.id, tab: .todo); app.terminalOnSide = false }
-        check(app.terminals.existing(a.id) === sessionA && sessionA.pid == pidA && sessionA.view.window != nil,
-              "A'ya dönünce aynı görünüm ve aynı süreç yeniden bağlandı (\(where_(sessionA)))")
-        // Kabuktaki değişken korunmuş mu: kabuk marka klasörüne yazar (yalıtım bu klasöre yazmaya izin verir).
-        let dirA = try? folders.folder(for: .brand(a.id))
-        let result = dirA?.appendingPathComponent("prova-sonuc.txt")
-        if let result { try? FileManager.default.removeItem(at: result) }
-        sessionA.view.send(txt: "echo \"$PROVA\" > prova-sonuc.txt\n")
-        try? await Task.sleep(for: .seconds(1))
-        let written = result.flatMap { try? String(contentsOf: $0, encoding: .utf8) }?.trimmingCharacters(in: .whitespacesAndNewlines)
-        check(written == "ayni-kabuk", "kabuk değişkeni korundu (yazılan: \(written ?? "yok"))")
-        if let result { try? FileManager.default.removeItem(at: result) }
-
-        // Yalıtım ayarı değişince açık oturum sürer; başlık tek satırla söyler.
-        let isolationBefore = app.terminalIsolation
-        app.terminalIsolation.toggle()
-        await step {}
-        check(alive(pidA) && app.terminals.isolationDiffers(a.id, current: app.terminalIsolation), "yalıtım değişince oturum sürer, fark işaretli")
-        app.terminalIsolation = isolationBefore
-
-        // Arşivleme: yalnız o markanın süreci biter.
-        await step { app.select(brand: c.id, tab: .flow) }
-        let pidC = app.terminals.existing(c.id)?.pid ?? 0
-        check(alive(pidC), "C oturumu başladı")
-        await step {
-            _ = app.perform { try app.store?.setBrandArchived(c.id, archived: true) }
-            app.reloadBasics()
-        }
-        try? await Task.sleep(for: .seconds(3))
-        check(!alive(pidC) && app.terminals.existing(c.id) == nil && alive(pidA), "C arşivlenince yalnız C'nin süreci bitti")
-        _ = app.perform { try app.store?.setBrandArchived(c.id, archived: false) }
-        app.reloadBasics()
-
-        // Kapanış: tek soru sayısı ve sonlandırma (soru penceresi burada açılmaz; `confirmQuit` aynı sayıyı kullanır).
-        check(app.terminals.quitQuestionCount == 2, "kapanışta sorulacak çalışan oturum sayısı 2")
-        let pids = [pidA, sessionB?.pid ?? 0]
-        app.terminals.handle(.appQuit).forEach { $0.terminate() }
-        try? await Task.sleep(for: .seconds(3))
-        check(pids.allSatisfy { !alive($0) } && app.terminals.quitQuestionCount == nil, "kapanışta tüm kabuklar sonlandı")
-        app.showAssistant = false
-        window.orderOut(nil)
-        return out
     }
 
     @discardableResult

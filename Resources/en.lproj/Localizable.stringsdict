@@ -2,6 +2,86 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>%d dosya depoda bulunamadığı için dışa aktarılamadı. Listesi veri.json içinde "missingFiles" altında.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d file could not be exported because it is missing from storage. It is listed under "missingFiles" in veri.json.</string>
+			<key>other</key>
+			<string>%d files could not be exported because they are missing from storage. They are listed under "missingFiles" in veri.json.</string>
+		</dict>
+	</dict>
+	<key>Yedek reddedildi: %d dosya yedek alındıktan sonra değiştirilmiş.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>Backup rejected: %d file was changed after the backup was made.</string>
+			<key>other</key>
+			<string>Backup rejected: %d files were changed after the backup was made.</string>
+		</dict>
+	</dict>
+	<key>Yedek reddedildi: %d dosya eksik.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>Backup rejected: %d file is missing.</string>
+			<key>other</key>
+			<string>Backup rejected: %d files are missing.</string>
+		</dict>
+	</dict>
+	<key>Yedek reddedildi: manifestte olmayan %d dosya var.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>Backup rejected: %d file is not listed in the manifest.</string>
+			<key>other</key>
+			<string>Backup rejected: %d files are not listed in the manifest.</string>
+		</dict>
+	</dict>
+	<key>Yedek alındı ama %d eski otomatik yedek silinemedi.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>Backup made, but %d old automatic backup could not be deleted.</string>
+			<key>other</key>
+			<string>Backup made, but %d old automatic backups could not be deleted.</string>
+		</dict>
+	</dict>
 	<key>%1$@, %2$d öneri onay bekliyor</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -257,22 +337,6 @@
 			<string>%d time entry</string>
 			<key>other</key>
 			<string>%d time entries</string>
-		</dict>
-	</dict>
-	<key>%d terminalde çalışan oturum var; kapatılsın mı?</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@n@; quit anyway?</string>
-		<key>n</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>d</string>
-			<key>one</key>
-			<string>%d terminal has a running session</string>
-			<key>other</key>
-			<string>%d terminals have running sessions</string>
 		</dict>
 	</dict>
 	<key>%d tutarsız durum (status esas alınır)</key>

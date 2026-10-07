@@ -1,0 +1,14 @@
+{
+  "ad": "tum-markalar-gorunumunde-oneri-reddedilir",
+  "aciklama": "Tüm markalar görünümünde görev önerisi araç düzeyinde reddedilir; hiçbir bekleyen öneri ya da görev oluşmaz.",
+  "adimlar": [
+    { "ad": "A markasını aç", "eylem": "markaAc", "etiket": "A", "baslik": "Deneme Yangın" },
+    { "ad": "B markasını aç", "eylem": "markaAc", "etiket": "B", "baslik": "Kuzey Lojistik" },
+    { "ad": "Tüm markalarda görev önerisi denenir", "eylem": "asistan", "tumMarkalar": true, "istem": "Gecikenler için hepsine görev aç",
+      "betik": [
+        [ { "arac": "gorev_oner", "girdi": { "baslik": "Toplu takip" } } ],
+        [ { "metin": "Tüm markalar görünümünde öneri yapamıyorum; bir marka seç." } ]
+      ],
+      "bekle": { "araclar": ["gorev_oner"], "hataliAraclar": ["gorev_oner"], "bekleyenOneri": 0, "uygulanmisOneri": 0 } }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "adimlar" : [
+    {
+      "ad" : "A markasını aç",
+      "cikti" : "marka açıldı: Deneme Yangın",
+      "eylem" : "markaAc",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 1
+    },
+    {
+      "ad" : "B markasını aç",
+      "cikti" : "marka açıldı: Kuzey Lojistik",
+      "eylem" : "markaAc",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 2
+    },
+    {
+      "ad" : "Tüm markalarda görev önerisi denenir",
+      "cikti" : "araçlar: gorev_oner; reddedilen: gorev_oner; bekleyen öneri: 0",
+      "eylem" : "asistan",
+      "gecti" : true,
+      "neden" : "tuttu",
+      "sira" : 3
+    }
+  ],
+  "gecti" : true,
+  "neden" : "tüm adımlar tuttu",
+  "yolculuk" : "tum-markalar-gorunumunde-oneri-reddedilir"
+}

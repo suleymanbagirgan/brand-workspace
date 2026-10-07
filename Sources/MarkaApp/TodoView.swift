@@ -7,11 +7,14 @@ import SwiftUI
 /// Üstte tek satır: solda görünür tür seçimi "Görev | Söz", yanında alan (Enter ekler; not Akış'ta eklenir). Satıra
 /// tıklayınca sağda ayrıntı paneli (satır içi düzenleme; altta İptal et, Sil… — tek yer).
 struct TodoView: View {
+    @Environment(\.openSettings) private var openSettings
     @Environment(AppModel.self) private var app
     @Environment(\.undoManager) private var undoManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let brand: Brand
     @State private var selection: PanelTarget?
+    /// Biten görevden elle iş kaydı (H2-03): bağlam menüsündeki "İş kaydı yaz".
+    @State private var writingLog: WorkLogDetail?
     @State private var quickTitle = ""
     @State private var quickKind = QuickKind.task
     @State private var adding = false
@@ -36,14 +39,16 @@ struct TodoView: View {
             case .waiting: L("Bekliyor")
             }
         }
-        func matches(_ item: TodoItem, done: Bool) -> Bool {
+        /// Tanım çekirdekte (`TodoStageFilter`); bekleyen bandı da aynı tanımla sayar (H3-10).
+        var core: TodoStageFilter {
             switch self {
-            case .all: return true
-            case .todo: return !done && item.circleState == .todo
-            case .doing: return !done && item.circleState == .doing
-            case .waiting: return !done && item.circleState == .waiting
+            case .all: .all
+            case .todo: .todo
+            case .doing: .doing
+            case .waiting: .waiting
             }
         }
+        func matches(_ item: TodoItem, done: Bool) -> Bool { core.matches(item, done: done) }
     }
 
     /// Sıralama (Hatırlatıcılar: teslim tarihi, öncelik, başlık, oluşturulma).
@@ -83,38 +88,42 @@ struct TodoView: View {
         self.brand = brand
         _selection = State(initialValue: selection)
         // Geliştirme: `MARKA_MOD=board|gantt|calendar` görünümü seçer (gerçek pencere doğrulaması için).
-        let override = ProcessInfo.processInfo.environment["MARKA_MOD"].flatMap { ["board": ViewMode.board, "gantt": .gantt, "calendar": .calendar][$0] }
+        let override = DevHook.value("MARKA_MOD").flatMap { ["board": ViewMode.board, "gantt": .gantt, "calendar": .calendar][$0] }
         _mode = State(initialValue: override ?? mode)
     }
 
     var body: some View {
         let _ = app.revision
-        let open = (try? app.store?.todo(brandId: brand.id)) ?? []
+        let open = app.read(or: []) { try $0.todo(brandId: brand.id) }
         let openIds = Set(open.map(\.id))
         let done = lingering.values.filter { !openIds.contains($0.id) }
         let all = (open + done).sorted(by: TodoItem.order)
         let items = sort.apply(all.filter { filter.matches($0, done: done.contains($0)) && (query.isEmpty || $0.title.localizedStandardContains(query)) })
         // Tamamlananlar (yalnız açıksa): en son biten üstte, en çok 100; aramaya uyar.
         let shownIds = Set(items.map(\.id))
-        let completed: [TodoItem] = app.showCompletedTasks
-            ? Array(((try? app.store?.tasks(brandId: brand.id, statuses: [.done])) ?? [])
+        // Durum süzgeci seçiliyken (ör. "Bekliyor") tamamlananlar gösterilmez: süzgeç tam olarak kendi satırlarını verir.
+        let completed: [TodoItem] = app.showCompletedTasks && filter == .all
+            ? Array((app.read(or: []) { try $0.tasks(brandId: brand.id, statuses: [.done]) })
                 .sorted { ($0.completedAt ?? $0.updatedAt) > ($1.completedAt ?? $1.updatedAt) }
                 .map(TodoItem.init)
                 .filter { !shownIds.contains($0.id) && (query.isEmpty || $0.title.localizedStandardContains(query)) }
                 .prefix(100))
             : []
         let doneIds = Set(done.map(\.id)).union(completed.map(\.id))
-        let waitingCount = open.filter { $0.circleState == .waiting && { if case .record(.decision, _) = $0.kind { true } else { false } }($0) }.count
+        // H3-10 (U-18): bant sayısı = "Bekliyor" süzgecinin sonucu (aynı çekirdek tanımı); bant düğmesi aramayı da temizler.
+        let waitingCount = CountDefinitions.waitingBandCount(open)
         let groups = grouped(items)
         VStack(alignment: .leading, spacing: 0) {
             // Başlık ve görünüm çubuğu sabit; altı kayar. Gantt ve Takvim aynı görevlerin zaman görünümüdür.
             VStack(alignment: .leading, spacing: Design.Space.l) {
                 SectionHeading(title: L("Görevler"), subtitle: LF("%d açık", open.count), symbol: "checklist", tintKey: brand.id) {
+                    // H2-02 (U-11): sağlayıcı yokken "Yapay zekâyı bağla…" olur ve Ayarlar'a götürür; istem bekletilmez.
                     Button {
-                        app.askAI(ChatPrompts.whatToDo)
-                    } label: { Label(L("Yapay zekâya sor"), systemImage: "sparkles").labelStyle(.titleAndIcon) }
+                        app.askOrConnect(ChatPrompts.whatToDo, brand: brand, openSettings: openSettings)
+                    } label: { Label(app.askAITitle(for: brand), systemImage: "sparkles").labelStyle(.titleAndIcon) }
                         .actionSecondary()
-                        .help(L("Asistan tüm kayıtları okuyup ne yapman gerektiğini söyler ve görev önerir"))
+                        .help(app.aiReady(for: brand) ? L("Asistan tüm kayıtları okuyup ne yapman gerektiğini söyler ve görev önerir")
+                                                      : L("Yapay zekâ bağlı değil ya da bu markada izinli değil; bağlamak için tıkla"))
                     Button {
                         if mode == .gantt || mode == .calendar { mode = .list }
                         adding.toggle()
@@ -132,10 +141,10 @@ struct TodoView: View {
                 ListWithPanel(selection: $selection) {
                     PageScroll(backgroundTap: { selection = nil }) {
                         VStack(alignment: .leading, spacing: 0) {
-                            if waitingCount > 0 { callout(waitingCount).padding(.bottom, Design.Space.m) }
+                            if waitingCount > 0 { callout(waitingCount).padding(.bottom, Design.Space.xs) }
                             if items.isEmpty && completed.isEmpty {
                                 EmptyStateView(title: all.isEmpty ? L("Bekleyen bir şey yok") : L("Bu filtreyle eşleşen iş yok"),
-                                               message: all.isEmpty ? L("Yukarıdan görev ya da söz ekleyebilirsin; terminaldeki araç da görev önerebilir. Bitenler Akış'ta görünür.") : L("Filtreyi “Tüm durumlar” yapabilirsin."),
+                                               message: all.isEmpty ? L("Yukarıdan görev ya da söz ekle. Bitenler Akış'ta görünür.") : L("Filtreyi “Tüm durumlar” yapabilirsin."),
                                                symbol: all.isEmpty ? "checklist" : "magnifyingglass")
                                     .padding(.top, Design.Space.m)
                             } else if mode == .board {
@@ -155,9 +164,11 @@ struct TodoView: View {
                 }
             }
         }
+        .sheet(item: $writingLog) { d in WorkLogEditor(detail: d, isNew: true).environment(app) }
         .onChange(of: brand.id) { selection = nil; lingering = [:]; filter = .all; query = "" }
         .onChange(of: app.addTaskRequested) { _, now in if now { mode = .list; adding = true; app.addTaskRequested = false } }
-        .onAppear { if app.addTaskRequested { mode = .list; adding = true; app.addTaskRequested = false } }
+        // Açılışta arama alanı odak almasın (Bugün/Stüdyo ile aynı kalıp); "görev ekle" isteğinde açılan kartın alanına dokunma.
+        .onAppear { if app.addTaskRequested { mode = .list; adding = true; app.addTaskRequested = false } else { OpeningFocus.settle() } }
     }
 
     // MARK: Klavye
@@ -185,10 +196,10 @@ struct TodoView: View {
     private func callout(_ count: Int) -> some View {
         // v3: kutu yok; tek satır, sakin.
         HStack(spacing: 10) {
-            Image(systemName: "hourglass").font(.system(size: 13)).foregroundStyle(.secondary)
-            Text(LF("Müşteri yanıtı bekleyen iş: %d", count)).font(.system(size: 13, weight: .medium))
+            Image(systemName: "hourglass").font(Design.Icon.medium).foregroundStyle(.secondary)
+            Text(LF("Bekleyen iş: %d", count)).font(Design.Font.body.weight(.medium))
             Spacer()
-            Button(L("Bekleyenleri gör")) { filter = .waiting }.buttonStyle(.text)
+            Button(L("Bekleyenleri gör")) { query = ""; filter = .waiting }.buttonStyle(.text)
         }
         .padding(.vertical, 6)
     }
@@ -204,7 +215,7 @@ struct TodoView: View {
                         Button { filter = f } label: { if filter == f { Label(f.title, systemImage: "checkmark") } else { Text(f.title) } }
                     }
                 } label: {
-                    Text(filter.title).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(filter.title).font(Design.Font.small).foregroundStyle(.secondary)
                 }
                 .menuStyle(.borderlessButton).fixedSize()
                 Menu {
@@ -214,7 +225,7 @@ struct TodoView: View {
                     Divider()
                     Toggle(L("Tamamlananları göster"), isOn: Binding(get: { app.showCompletedTasks }, set: { app.showCompletedTasks = $0 }))
                 } label: {
-                    Label(L("Sırala"), systemImage: "arrow.up.arrow.down").labelStyle(.titleAndIcon).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Label(L("Sırala"), systemImage: "arrow.up.arrow.down").labelStyle(.titleAndIcon).font(Design.Font.small).foregroundStyle(.secondary)
                 }
                 .menuStyle(.borderlessButton).fixedSize()
                 .help(L("Sıralama ve tamamlananlar"))
@@ -259,11 +270,11 @@ struct TodoView: View {
                 }
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).frame(width: 14)
-                    Text(group.name).font(.system(size: 12, weight: .semibold))
-                    Text(verbatim: "\(group.items.count)").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down").font(Design.Icon.small.weight(.semibold)).foregroundStyle(.secondary).frame(width: 14)
+                    Text(group.name).font(Design.Font.callout.weight(.semibold))
+                    Text(verbatim: "\(group.items.count)").font(Design.Font.small).foregroundStyle(.secondary)
                         .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(RoundedRectangle(cornerRadius: 3).fill(Design.panel))
+                        .background(RoundedRectangle(cornerRadius: Design.Radius.small).fill(Design.panel))
                     Spacer()
                 }
                 .frame(height: 32).contentShape(Rectangle())
@@ -280,7 +291,7 @@ struct TodoView: View {
                 .flatList()
             }
         }
-        .padding(.top, 22)
+        .padding(.top, 16)
     }
 
     private func board(_ items: [TodoItem], doneIds: Set<String>) -> some View {
@@ -290,24 +301,25 @@ struct TodoView: View {
                 let list = items.filter { doneIds.contains($0.id) ? col.1 == .todo : $0.circleState == col.1 }
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
+                        // a11y-tarama: yok-say — sütun başlığı durumu yanındaki Text(col.0) ile metin olarak söyler
                         StatusCircle(state: col.1, size: 14)
-                        Text(col.0).font(.system(size: 12, weight: .semibold))
-                        Text(verbatim: "\(list.count)").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text(col.0).font(Design.Font.callout.weight(.semibold))
+                        Text(verbatim: "\(list.count)").font(Design.Font.small).foregroundStyle(.secondary)
                             .padding(.horizontal, 6).padding(.vertical, 1).background(Capsule().fill(Design.line.opacity(0.6)))
                         Spacer()
                     }
                     .padding(.horizontal, 4).padding(.bottom, 2)
                     if list.isEmpty {
-                        Text(L("Boş")).font(.system(size: 11)).foregroundStyle(.tertiary)
+                        Text(L("Boş")).font(Design.Font.small).foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity, minHeight: 64)
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Design.line, style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
+                            .overlay(RoundedRectangle(cornerRadius: Design.Radius.medium, style: .continuous).strokeBorder(Design.line, style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
                     }
                     ForEach(list) { item in boardCard(item, done: doneIds.contains(item.id)) }
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Design.sidebarBackground.opacity(dropTarget == col.0 ? 1 : 0.7)))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(dropTarget == col.0 ? AnyShapeStyle(Design.accent) : AnyShapeStyle(Color.clear), lineWidth: 2))
+                .background(RoundedRectangle(cornerRadius: Design.Radius.large, style: .continuous).fill(Design.sidebarBackground.opacity(dropTarget == col.0 ? 1 : 0.7)))
+                .overlay(RoundedRectangle(cornerRadius: Design.Radius.large, style: .continuous).strokeBorder(dropTarget == col.0 ? AnyShapeStyle(Design.accent) : AnyShapeStyle(Color.clear), lineWidth: 2))
                 // Kartı başka sütuna bırakmak görevin durumunu değiştirir (yalnız görevler; söz/karar/talep durumları sütunla eşleşmez).
                 .dropDestination(for: String.self, action: { ids, _ in dropTasks(ids, to: col.1) },
                                  isTargeted: { dropTarget = $0 ? col.0 : (dropTarget == col.0 ? nil : dropTarget) })
@@ -319,7 +331,9 @@ struct TodoView: View {
     private func dropTasks(_ ids: [String], to state: StatusCircle.State) -> Bool {
         guard let store = app.store else { return false }
         let status: TaskStatus = switch state { case .todo: .todo; case .doing: .inProgress; case .waiting: .waiting; case .done: .done }
-        let tasks = ids.compactMap { id in (try? store.tasks(brandId: brand.id))?.first { $0.id == id } }.filter { $0.status != status && $0.status.isOpen }
+        // Markanın görevleri bir kez okunur (bırakılan her görev için yeniden okunmaz).
+        let byId = Dictionary(uniqueKeysWithValues: ((try? store.tasks(brandId: brand.id)) ?? []).map { ($0.id, $0) })
+        let tasks = ids.compactMap { byId[$0] }.filter { $0.status != status && $0.status.isOpen }
         guard !tasks.isEmpty else { return false }
         let ok: Void? = app.perform(title: L("Durum değiştirilemedi"), context: "yapilacak.surukle") {
             for t in tasks { try store.setTaskStatus(t.id, status) }
@@ -327,7 +341,9 @@ struct TodoView: View {
         guard ok != nil else { return false }
         let before = tasks.map { ($0.id, $0.status) }
         undoManager?.registerUndo(withTarget: app) { _ in
-            MainActor.assumeIsolated { for (id, old) in before { try? app.store?.setTaskStatus(id, old) } }
+            MainActor.assumeIsolated {
+                app.perform(title: L("Geri alınamadı"), context: "gorev.durum.geri") { for (id, old) in before { try app.store?.setTaskStatus(id, old) } }
+            }
         }
         undoManager?.setActionName(L("Durumu değiştir"))
         return true
@@ -337,29 +353,39 @@ struct TodoView: View {
         let target = PanelTarget(item)
         let selected = selection == target
         return VStack(alignment: .leading, spacing: 10) {
-            Text(item.title).font(.system(size: 12, weight: .medium)).strikethrough(done).lineLimit(3)
+            Text(item.title).font(Design.Font.callout.weight(.medium)).strikethrough(done).lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 6) {
-                Text(item.kindTitle).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                Text(item.kindTitle).font(Design.Font.small).foregroundStyle(.secondary).lineLimit(1)
                 if item.priority >= 3 { Pill(text: L("Yüksek"), tint: AnyShapeStyle(Design.accent)) }
                 Spacer(minLength: 4)
-                if let d = item.dueDate { DueLabel(day: d) }
+                if let d = item.dueDate { DueLabel(day: d, isOpen: !done) }
             }
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Design.windowBackground))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(selected ? AnyShapeStyle(Design.accent) : AnyShapeStyle(Design.line), lineWidth: selected ? 2 : 1))
+        .background(RoundedRectangle(cornerRadius: Design.Radius.medium, style: .continuous).fill(Design.windowBackground))
+        .overlay(RoundedRectangle(cornerRadius: Design.Radius.medium, style: .continuous).strokeBorder(selected ? AnyShapeStyle(Design.accent) : AnyShapeStyle(Design.line), lineWidth: selected ? 2 : 1))
         .shadow(color: .black.opacity(0.04), radius: 3, y: 1)
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: Design.Radius.medium, style: .continuous))
         .onTapGesture { selection = selected ? nil : target }
         .modifier(DragIfTask(item: item))
         .contextMenu {
             if item.canComplete { Button(done ? L("Yeniden aç") : L("Tamamla")) { toggle(item, done: done) } }
+            writeLogButton(item, done: done)
             Button(L("Ayrıntıyı aç")) { selection = target }
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { selection = target }
+    }
+
+    /// Bağlam menüsü: biten görevde "İş kaydı yaz" (H2-03, U-09). Kayıt kullanıcı eylemiyle doğrulanır, rapora girer.
+    @ViewBuilder private func writeLogButton(_ item: TodoItem, done: Bool) -> some View {
+        if case .task(let st) = item.kind, st == .done || done {
+            Button(L("İş kaydı yaz")) {
+                if let t = try? app.store?.task(item.entityId) { writingLog = .newDraft(for: t) }
+            }
+        }
     }
 
     // MARK: Ekleme
@@ -372,7 +398,7 @@ struct TodoView: View {
                     let on = quickKind == k
                     Button(k.title) { quickKind = k }
                         .buttonStyle(.text)
-                        .background(RoundedRectangle(cornerRadius: Design.radius).fill(on ? AnyShapeStyle(Design.selection) : AnyShapeStyle(.clear)))
+                        .background(RoundedRectangle(cornerRadius: Design.Radius.small).fill(on ? AnyShapeStyle(Design.selection) : AnyShapeStyle(.clear)))
                         .accessibilityAddTraits(on ? .isSelected : [])
                 }
             }
@@ -404,9 +430,8 @@ struct TodoView: View {
             statusButton(item, done: done)
             titleBlock(item, done: done)
             priorityColumn(item)
-            dueColumn(item)
-            timerButton(item)
-            assigneeBadge(item.assignee)
+            dueColumn(item, done: done)
+            trailingColumn(item)
         }
         .padding(.vertical, 12).padding(.horizontal, 14)
         .rowBackground(selected: selected, radius: 0)
@@ -421,6 +446,7 @@ struct TodoView: View {
                     app.runningTimer?.taskId == item.entityId ? app.stopTimer() : app.startTimer(item.entityId)
                 }
             }
+            writeLogButton(item, done: done)
             Button(L("Ayrıntıyı aç")) { selection = target }
         }
         // İptal et ve Sil… tek yerde: panelin altında (U9; sağ tık menüsü ikinci yoldu, kalktı).
@@ -431,6 +457,33 @@ struct TodoView: View {
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { selection = selected ? nil : target }
         .modifier(RowAction(name: done ? L("Yeniden aç") : L("Tamamla"), enabled: item.canComplete, perform: { toggle(item, done: done) }))
+        .modifier(RowAction(name: timerActionName(item), enabled: canTime(item), perform: { toggleTimer(item) }))
+    }
+
+    /// Sağ sütun (H3-06, U-38 + T-08): zamanlayıcı ve sorumlu rozeti sabit genişlikte; rozet ya da sayaç olmasa da sütun
+    /// yer tutar, böylece satırlar arasında öğelerin x konumu kaymaz. Sayaç çalışırken süre metni de bu genişliğe sığar.
+    private static let timerWidth: CGFloat = 84
+    private static let badgeWidth: CGFloat = 24
+
+    private func trailingColumn(_ item: TodoItem) -> some View {
+        HStack(spacing: 8) {
+            timerButton(item).frame(width: Self.timerWidth, alignment: .trailing)
+            assigneeBadge(item.assignee).frame(width: Self.badgeWidth)
+        }
+        .frame(width: Self.timerWidth + 8 + Self.badgeWidth)
+    }
+
+    private func canTime(_ item: TodoItem) -> Bool {
+        if case .task(let status) = item.kind { return status.isOpen }
+        return false
+    }
+
+    private func timerActionName(_ item: TodoItem) -> String {
+        app.runningTimer?.taskId == item.entityId ? L("Zamanlayıcıyı durdur") : L("Zamanlayıcıyı başlat")
+    }
+
+    private func toggleTimer(_ item: TodoItem) {
+        app.runningTimer?.taskId == item.entityId ? app.stopTimer() : app.startTimer(item.entityId)
     }
 
     /// Zamanlayıcı: açık görevde oynat/durdur; çalışırken süre görünür.
@@ -439,8 +492,8 @@ struct TodoView: View {
             let running = app.runningTimer?.taskId == item.entityId
             Button { running ? app.stopTimer() : app.startTimer(item.entityId) } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: running ? "stop.circle.fill" : "play.circle").font(.system(size: 16))
-                    if running { Text(Timecode.string(app.elapsed)).font(.system(size: 11, weight: .medium)).monospacedDigit() }
+                    Image(systemName: running ? "stop.circle.fill" : "play.circle").font(Design.Icon.medium)
+                    if running { Text(Timecode.string(app.elapsed)).font(Design.Font.small.weight(.medium)).monospacedDigit() }
                 }
                 .foregroundStyle(running ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
                 .frame(minWidth: 28, minHeight: 28)
@@ -449,7 +502,7 @@ struct TodoView: View {
             .help(running ? L("Zamanlayıcıyı durdur") : L("Zamanlayıcıyı başlat"))
             .accessibilityLabel(running ? L("Zamanlayıcıyı durdur") : L("Zamanlayıcıyı başlat"))
         } else {
-            Color.clear.frame(width: 28, height: 28)
+            Color.clear.frame(width: 28, height: 28).accessibilityHidden(true)
         }
     }
 
@@ -460,45 +513,53 @@ struct TodoView: View {
             .opacity(item.canComplete ? 1 : 0)
             .disabled(!item.canComplete)
             .help(done ? L("Yeniden aç") : L("Tamamla"))
+            .accessibilityLabel(done ? L("Yeniden aç") : L("Tamamla"))
+            .accessibilityValue(state.title)
     }
 
     private func titleBlock(_ item: TodoItem, done: Bool) -> some View {
         let ink: AnyShapeStyle = done ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary)
         return VStack(alignment: .leading, spacing: 3) {
-            Text(item.title).font(.system(size: 13, weight: .medium)).lineLimit(1).strikethrough(done).foregroundStyle(ink)
-            Text(item.kindTitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            Text(item.title).font(Design.Font.body.weight(.medium)).lineLimit(1).strikethrough(done).foregroundStyle(ink)
+            Text(item.kindTitle).font(Design.Font.small).foregroundStyle(.secondary).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    @ViewBuilder private func dueColumn(_ item: TodoItem) -> some View {
-        if let d = item.dueDate { DueLabel(day: d).frame(width: 64, alignment: .trailing) } else { Color.clear.frame(width: 64, height: 1) }
+    @ViewBuilder private func dueColumn(_ item: TodoItem, done: Bool) -> some View {
+        if let d = item.dueDate { DueLabel(day: d, isOpen: !done).frame(width: 64, alignment: .trailing) } else { Color.clear.frame(width: 64, height: 1) }
     }
 
     private static func accessibilityValue(_ item: TodoItem, done: Bool) -> String {
         var parts: [String] = []
         if done { parts.append(L("Bitti")) }
         if let d = item.dueDate { parts.append(LF("Son tarih %@", d)) }
+        // Satır VoiceOver'da tek öğe: sorumlu rozeti ipucu yerine değerde okunur (H3-06).
+        if !item.assignee.isEmpty { parts.append(LF("Sorumlu: %@", item.assignee)) }
         return parts.joined(separator: ", ")
     }
 
     @ViewBuilder private func priorityColumn(_ item: TodoItem) -> some View {
         if item.priority >= 3 {
-            Label(L("Yüksek"), systemImage: "flag").labelStyle(.titleAndIcon).font(.system(size: 10)).foregroundStyle(.secondary)
+            Label(L("Yüksek"), systemImage: "flag").labelStyle(.titleAndIcon).font(Design.Font.small).foregroundStyle(.secondary)
                 .frame(width: 74, alignment: .leading)
         } else {
             Color.clear.frame(width: 74, height: 1)
         }
     }
 
-    private func assigneeBadge(_ name: String) -> some View {
-        let empty = name.isEmpty
-        let fill: AnyShapeStyle = empty ? AnyShapeStyle(Color.clear) : AnyShapeStyle(Design.panel)
-        let stroke: AnyShapeStyle = empty ? AnyShapeStyle(Color.clear) : AnyShapeStyle(Design.line)
-        return Text(Self.initials(name)).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-            .frame(width: 24, height: 24)
-            .background(Circle().fill(fill))
-            .overlay(Circle().strokeBorder(stroke))
+    /// Sorumlu rozeti: boşken gösterilmez (yalnız yer tutar); doluyken baş harf, ipucu ve VoiceOver adın tamamını söyler.
+    @ViewBuilder private func assigneeBadge(_ name: String) -> some View {
+        if name.isEmpty {
+            Color.clear.frame(width: Self.badgeWidth, height: Self.badgeWidth).accessibilityHidden(true)
+        } else {
+            Text(Self.initials(name)).font(Design.Font.small.weight(.semibold)).foregroundStyle(.secondary)
+                .frame(width: Self.badgeWidth, height: Self.badgeWidth)
+                .background(Circle().fill(Design.panel))
+                .overlay(Circle().strokeBorder(Design.line))
+                .help(LF("Sorumlu: %@", name))
+                .accessibilityLabel(LF("Sorumlu: %@", name))
+        }
     }
 
     static func initials(_ name: String) -> String {
@@ -514,7 +575,11 @@ struct TodoView: View {
             restore(item)
             if wasDone {
                 // ⌘Z: yeniden açılan görevi tekrar tamamlar.
-                undoManager?.registerUndo(withTarget: app) { _ in MainActor.assumeIsolated { try? app.store?.setTaskStatus(item.entityId, .done) } }
+                undoManager?.registerUndo(withTarget: app) { _ in
+                    MainActor.assumeIsolated {
+                        app.perform(title: L("Geri alınamadı"), context: "gorev.yeniden-ac.geri") { try app.store?.setTaskStatus(item.entityId, .done) }
+                    }
+                }
                 undoManager?.setActionName(L("Yeniden aç"))
             }
             return
@@ -586,6 +651,7 @@ private struct DragIfTask: ViewModifier {
 /// Yeni görev kartı ("Görev ekle" açılır penceresi): başlık, tür, tarih çipleri, öncelik ve en üstte yapay zekâya sorma.
 struct NewTaskCard: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.openSettings) private var openSettings
     let brand: Brand
     @Binding var isPresented: Bool
     @State private var title = ""
@@ -611,29 +677,29 @@ struct NewTaskCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Button { isPresented = false; app.askAI(ChatPrompts.whatToDo) } label: {
+            Button { isPresented = false; app.askOrConnect(ChatPrompts.whatToDo, brand: brand, openSettings: openSettings) } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "sparkles").font(.system(size: 14, weight: .semibold)).foregroundStyle(BrandTintStyle(key: brand.id))
+                    Image(systemName: "sparkles").font(Design.Icon.medium.weight(.semibold)).foregroundStyle(BrandTintStyle(key: brand.id))
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(L("Yapay zekâya sor: Ne yapmalıyım?")).font(.system(size: 12, weight: .semibold))
-                        Text(L("Tüm kayıtları okur, görev önerir")).font(.system(size: 10)).foregroundStyle(.secondary)
+                        Text(app.aiReady(for: brand) ? L("Yapay zekâya sor: Ne yapmalıyım?") : L("Yapay zekâyı bağla…")).font(Design.Font.callout.weight(.semibold))
+                        Text(app.aiReady(for: brand) ? L("Tüm kayıtları okur, görev önerir") : L("Sormadan önce Ayarlar'dan bir sağlayıcı bağla")).font(Design.Font.small).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Image(systemName: "arrow.right").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Image(systemName: "arrow.right").font(Design.Icon.small).foregroundStyle(.secondary)
                 }
                 .padding(12)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(BrandTintStyle(key: brand.id).opacity(0.12)))
-                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(RoundedRectangle(cornerRadius: Design.Radius.medium, style: .continuous).fill(BrandTintStyle(key: brand.id).opacity(0.12)))
+                .contentShape(RoundedRectangle(cornerRadius: Design.Radius.medium, style: .continuous))
             }
             .buttonStyle(.plain)
             Rectangle().fill(Design.line).frame(height: 1)
             VStack(alignment: .leading, spacing: 6) {
                 TextField(kind == .task ? L("Görev adı") : L("Verdiğin söz"), text: $title)
-                    .textFieldStyle(.plain).font(.system(size: 18, weight: .semibold)).focused($focused).onSubmit(add)
+                    .textFieldStyle(.plain).font(Design.Font.heading.weight(.semibold)).focused($focused).onSubmit(add)
                 SegmentedChoice(options: [(Kind.task, L("Görev")), (Kind.promise, L("Söz"))], selection: $kind)
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text(L("Son tarih")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                Text(L("Son tarih")).font(Design.Font.small.weight(.semibold)).foregroundStyle(.secondary)
                 HStack(spacing: 6) {
                     chip(L("Yok"), .none); chip(L("Bugün"), .today); chip(L("Yarın"), .tomorrow); chip(L("1 hafta"), .week); chip(L("Seç…"), .pick)
                 }
@@ -641,7 +707,7 @@ struct NewTaskCard: View {
             }
             if kind == .task {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L("Öncelik")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    Text(L("Öncelik")).font(Design.Font.small.weight(.semibold)).foregroundStyle(.secondary)
                     SegmentedChoice(options: [(0, L("Normal")), (2, L("Orta")), (3, L("Yüksek"))], selection: $priority)
                 }
             }
@@ -659,7 +725,7 @@ struct NewTaskCard: View {
     private func chip(_ text: String, _ value: Due) -> some View {
         let on = due == value
         return Button { due = value } label: {
-            Text(text).font(.system(size: 11, weight: on ? .semibold : .regular)).foregroundStyle(on ? AnyShapeStyle(Design.accent) : AnyShapeStyle(.secondary))
+            Text(text).font(Design.Font.small.weight(on ? .semibold : .regular)).foregroundStyle(on ? AnyShapeStyle(Design.accent) : AnyShapeStyle(.secondary))
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(Capsule().fill(on ? AnyShapeStyle(Design.accent.opacity(0.14)) : AnyShapeStyle(Design.panel)))
         }

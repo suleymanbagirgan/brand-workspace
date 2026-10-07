@@ -14,6 +14,14 @@ struct BrandDetailView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isSnapshot) private var isSnapshot
 
+    /// Kilit simgesinin ipucu: mutlak "veri burada durur" değil; AI açıksa içeriğin hangi sağlayıcıya gittiğini söyler.
+    private var localDataHelp: String {
+        let allowed = AIProviderKind.selectable.filter { brand.allows($0) }
+        if allowed.isEmpty { return L("Veriler bu Mac'te yerel saklanır; bu markada yapay zekâ kapalı.") }
+        return LF("Veriler bu Mac'te yerel saklanır; bu markanın içeriği yalnız izin verdiğin sağlayıcıya gönderilir: %@",
+                  allowed.map(\.shortName).joined(separator: ", "))
+    }
+
     var body: some View {
         @Bindable var app = app
         GeometryReader { geo in
@@ -24,7 +32,7 @@ struct BrandDetailView: View {
                                          limit: max(AppModel.terminalWidthRange.lowerBound, min(AppModel.terminalWidthRange.upperBound, geo.size.width - 460)))
                     // v3: terminal pencereye gömülü şerit değil, yüzen yuvarlak bir panel (çevresinde boşluk).
                     AIChatPanel(brand: brand)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: Design.Radius.large, style: .continuous))
                         .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
                         .padding(.trailing, 12).padding(.vertical, 10)
                         .frame(width: min(app.terminalWidth, max(AppModel.terminalWidthRange.lowerBound, geo.size.width - 460)) + 12)
@@ -32,12 +40,12 @@ struct BrandDetailView: View {
             }
         }
         .navigationTitle(brand.name)
-        .navigationSubtitle(brand.sector)
+        .navigationSubtitle(brand.isOwn ? L("Kendi şirketimiz") : brand.sector)
         .toolbar {
             // Bölüm seçici pencerenin araç çubuğunda (Finder, Hatırlatıcılar gibi): yalnız metin, altı segment.
             ToolbarItem(placement: .principal) {
                 Picker(L("Bölüm"), selection: $app.brandTab) {
-                    ForEach(BrandTab.allCases) { tab in Text(tab.title).tag(tab) }
+                    ForEach(BrandTab.allCases) { tab in Text(tab.title(for: brand)).tag(tab) }
                 }
                 .pickerStyle(.segmented).labelsHidden()
                 .frame(minWidth: 440)
@@ -46,23 +54,23 @@ struct BrandDetailView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 // Deneme veri alanı (demo): gerçek veriyle karışmasın diye turuncu etiket.
                 if app.preferences.scope.kind == .trial {
-                    Text(L("Demo veri")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.orange)
+                    Text(L("Demo veri")).font(Design.Font.small.weight(.semibold)).foregroundStyle(.orange)
                         .padding(.horizontal, 8).padding(.vertical, 3).background(Capsule().fill(Color.orange.opacity(0.15)))
                         .help(L("Bu pencere örnek veriyle çalışıyor; gerçek verin değişmez"))
                 }
-                Label(L("Yerel"), systemImage: "lock").labelStyle(.titleAndIcon).font(.callout).foregroundStyle(.secondary)
-                    .help(L("Veri bu Mac'te durur"))
+                Label(L("Yerel"), systemImage: "lock").labelStyle(.iconOnly).font(.callout).foregroundStyle(.secondary)
+                    .help(localDataHelp)
                 Toggle(isOn: $app.showAssistant) { Label(L("Asistan"), systemImage: "sparkles") }
                     .toggleStyle(.button)
                     .help(app.showAssistant ? L("Asistanı gizle (⌘J)") : L("Yapay zekâ asistanını göster (⌘J)"))
                 Menu {
                     Button(L("Bilgiler ve AI izinleri…")) { app.brandSheet = .info(brand.id) }
                     Button(L("Klasörü Finder'da göster")) {
-                        if let folder = app.writeContext(brandId: brand.id) { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+                        if let folder = app.revealFolder(brandId: brand.id) { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
                     }
                     Divider()
                     Button(L("Dışa aktar…")) { exportBrand(app: app, brand: brand) }
-                    Button(L("Arşivle…")) { archiving = true }
+                    if !brand.isOwn { Button(L("Arşivle…")) { archiving = true } }
                 } label: {
                     Label(L("Diğer"), systemImage: "ellipsis.circle")
                 }
@@ -120,7 +128,8 @@ struct BrandDetailView: View {
         case .flow: FlowView(brand: brand)
         case .todo: TodoView(brand: brand)
         case .files: FilesView(brand: brand)
-        case .info: BrandProfileView(brand: brand)
+        case .info:
+            if brand.isOwn { CompanyView() } else { BrandProfileView(brand: brand) }
         case .finance: FinanceView(brand: brand)
         case .report: ReportsView(brand: brand)
         }
@@ -136,7 +145,7 @@ struct BrandHeader: View {
         HStack(alignment: .center, spacing: Design.Space.m) {
             BrandAvatar(name: brand.name, tintKey: brand.id, selected: true, size: 34)
             VStack(alignment: .leading, spacing: 1) {
-                Text(brand.name).font(.system(size: 15, weight: .semibold)).lineLimit(1).accessibilityAddTraits(.isHeader)
+                Text(brand.name).font(Design.Font.heading.weight(.semibold)).lineLimit(1).accessibilityAddTraits(.isHeader)
                 Text(brand.sector.isEmpty ? L("Marka çalışma alanı") : brand.sector).captionStyle().lineLimit(1)
             }
             Spacer()
@@ -153,7 +162,12 @@ func exportBrand(app: AppModel, brand: Brand) {
     panel.prompt = L("Buraya aktar")
     guard panel.runModal() == .OK, let dir = panel.url, let store = app.store else { return }
     if let out = app.perform(context: "marka.disa-aktar", { try BackupService(workspace: app.workspaceURL).exportBrand(brand.id, store: store, to: dir) }) {
-        NSWorkspace.shared.activateFileViewerSelecting([out])
+        NSWorkspace.shared.activateFileViewerSelecting([out.folder])
+        // Depoda bulunamayan dosya sessizce atlanmaz: kullanıcıya sayısı söylenir, listesi veri.json'da.
+        if !out.missingFiles.isEmpty {
+            app.alert = AppAlert(title: L("Dışa aktarım eksik"),
+                                 message: LF("%d dosya depoda bulunamadığı için dışa aktarılamadı. Listesi veri.json içinde \"missingFiles\" altında.", out.missingFiles.count))
+        }
     }
 }
 
@@ -162,12 +176,13 @@ struct SectionTabs: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
+        let brand = app.selectedBrand
         HStack(spacing: 20) {
             ForEach(BrandTab.allCases) { tab in
                 let selected = app.brandTab == tab
                 Button { app.brandTab = tab } label: {
-                    Text(tab.title)
-                        .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    Text(brand.map { tab.title(for: $0) } ?? tab.title)
+                        .font(Design.Font.body.weight(selected ? .semibold : .regular))
                         .foregroundStyle(selected ? AnyShapeStyle(Design.accent) : AnyShapeStyle(.secondary))
                         .padding(.top, 14).padding(.bottom, 12)
                         .overlay(alignment: .bottom) {
@@ -198,7 +213,7 @@ struct BrandSheets: ViewModifier {
         content.sheet(item: $app.brandSheet) { sheet in
             Group {
                 switch sheet {
-                case .approvals: ApprovalSheet(brand: brand, pending: (try? app.store?.pendingApprovals(brandId: brand.id)) ?? PendingApprovals(),
+                case .approvals: ApprovalSheet(brand: brand, pending: app.read(or: PendingApprovals()) { try $0.pendingApprovals(brandId: brand.id) },
                                                files: app.newFiles[brand.id] ?? [])
                 case .info: BrandInfoView(brand: brand)
                 }

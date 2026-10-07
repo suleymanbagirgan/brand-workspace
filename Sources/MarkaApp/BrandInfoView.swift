@@ -25,11 +25,11 @@ struct BrandInfoView: View {
 
     var body: some View {
         let _ = app.revision
-        let current = (try? app.store?.brand(brand.id)) ?? brand
+        let current = app.read(or: brand) { try $0.brand(brand.id) }
         VStack(spacing: 0) {
             PageScroll {
                 VStack(alignment: .leading, spacing: Design.Space.l) {
-                    if !embedded { Text(L("Bilgiler")).font(Design.Font.title).accessibilityAddTraits(.isHeader) }
+                    if !embedded { Text(L("Bilgiler")).font(Design.Font.heading.weight(.semibold)).accessibilityAddTraits(.isHeader) }
                     if show != .people { profile(current) }
                     if show != .people { permissions(current) }
                     if show != .access { contacts }
@@ -64,7 +64,7 @@ struct BrandInfoView: View {
 
     private func header(_ title: String, action: String? = nil, _ perform: @escaping () -> Void = {}) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title).font(Design.Font.section).accessibilityAddTraits(.isHeader)
+            Text(title).font(Design.Font.body.weight(.bold)).accessibilityAddTraits(.isHeader)
             Spacer()
             if let action {
                 Button(action, action: perform).buttonStyle(.text).disabled(isEditing)
@@ -111,9 +111,9 @@ struct BrandInfoView: View {
     private func permissions(_ b: Brand) -> some View {
         VStack(alignment: .leading, spacing: Design.Space.s) {
             header(L("AI izinleri"))
-            Text(L("Uygulama içindeki rapor özeti yalnız izin verdiğin sağlayıcıyı kullanır. Terminal bu izne bağlı değildir."))
+            Text(L("Asistan sohbeti ve rapor özeti yalnız izin verdiğin sağlayıcıyı kullanır. İzin varsayılan olarak kapalıdır."))
                 .captionStyle().fixedSize(horizontal: false, vertical: true)
-            ForEach(AIProviderKind.allCases) { p in
+            ForEach(AIProviderKind.selectable) { p in  // MAS: Anthropic + Apple (E-25)
                 let on = Binding(get: { b.allows(p) }, set: { value in
                     var set = b.allowedProviders
                     if value { set.insert(p) } else { set.remove(p) }
@@ -125,7 +125,9 @@ struct BrandInfoView: View {
                         Text(p.shortName).onTapGesture { on.wrappedValue.toggle() }.accessibilityHidden(true)
                         Text(p == .anthropic
                              ? L("Kendi API anahtarınla; kullanım başına ücretli.")
-                             : L("Kendi ChatGPT planınla; bu markanın klasöründe yalıtılmış çalışır. Kabuk komutlarının ağ erişimi açıktır."))
+                             : p == .local ? L("Bu Mac'te kendin başlattığın model sunucusu; adresi Ayarlar › Genel'de. Araç kullanmaz, öneri üretmez.")   // E-11
+                             : p == .apple ? L("Apple'ın bu Mac'teki cihaz üstü modeli; anahtar gerekmez. macOS 26 ve açık Apple Intelligence ister. Araç kullanmaz, öneri üretmez.")   // E-25
+                             : L("Kendi ChatGPT planınla. Bu markanın klasöründe sana sormadan komut çalıştırabilir; komutlar internete çıkabilir ve diğer markaların klasörleri dışında Mac'indeki dosyaları okuyabilir."))
                             .captionStyle().fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -136,7 +138,7 @@ struct BrandInfoView: View {
     // MARK: Kişiler
 
     private var contacts: some View {
-        let list = (try? app.store?.contacts(brandId: brand.id)) ?? []
+        let list = app.read(or: []) { try $0.contacts(brandId: brand.id) }
         let isNew = contactDraft.map { d in !list.contains { $0.id == d.id } } ?? false
         return VStack(alignment: .leading, spacing: Design.Space.s) {
             header(L("Kişiler"), action: L("Ekle")) { edit(contact: Contact(brandId: brand.id, name: "")) }
@@ -180,7 +182,7 @@ struct BrandInfoView: View {
     // MARK: Projeler
 
     private var projects: some View {
-        let list = (try? app.store?.projects(brandId: brand.id)) ?? []
+        let list = app.read(or: []) { try $0.projects(brandId: brand.id) }
         let isNew = projectDraft.map { d in !list.contains { $0.id == d.id } } ?? false
         return VStack(alignment: .leading, spacing: Design.Space.s) {
             header(L("Projeler"), action: L("Ekle")) { edit(project: Project(brandId: brand.id, name: "")) }
@@ -195,7 +197,7 @@ struct BrandInfoView: View {
                                 Text(p.name)
                                 Spacer()
                                 Text(p.status.title).captionStyle()
-                                if let d = p.dueDate { DueLabel(day: d) }
+                                if let d = p.dueDate { DueLabel(day: d, isOpen: p.status != .done) }
                             }
                         }
                     }
@@ -225,7 +227,7 @@ struct BrandInfoView: View {
 
     /// Terminal önerisiyle (ya da eski sürümde) gelen hedef, teklif, sözleşme ve önemli tarih kayıtları. Yalnız varsa görünür.
     @ViewBuilder private var references: some View {
-        let list = (try? app.store?.referenceRecords(brandId: brand.id)) ?? []
+        let list = app.read(or: []) { try $0.referenceRecords(brandId: brand.id) }
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: Design.Space.s) {
                 header(L("Hedef, teklif ve tarihler"))
@@ -236,7 +238,7 @@ struct BrandInfoView: View {
                             Text(r.title).lineLimit(1)
                             Spacer()
                             if BrandRecord.defaultStatus(for: r.kind) != r.status { Text(r.status.title).captionStyle() }
-                            if let d = r.dueDate { DueLabel(day: d) }
+                            if let d = r.dueDate { DueLabel(day: d, isOpen: r.isOpen) }
                         }
                         .padding(.vertical, Design.Space.xs)
                     }

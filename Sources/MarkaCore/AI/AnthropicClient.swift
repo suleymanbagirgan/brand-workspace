@@ -129,7 +129,9 @@ public struct AnthropicClient: Sendable {
                 if let r = event["delta"]?["stop_reason"]?.string { result.stopReason = r }
                 Self.applyUsage(event["usage"], to: &result)
             case "error":
-                throw MarkaError.ai(event["error"]?["message"]?.string.map { Self.truncated(redacted($0), limit: Self.jsonMessageLimit) } ?? L("Akış sırasında hata oluştu."))
+                // H3-04: akış içi hata (ör. overloaded_error) türüyle taşınır.
+                let kind = event["error"]?["type"]?.string.flatMap { AIErrorClassifier.classify(anthropicErrorType: $0, message: event["error"]?["message"]?.string ?? "") } ?? .unknown
+                throw AIServiceError(kind: kind, technicalMessage: event["error"]?["message"]?.string.map { Self.truncated(redacted($0), limit: Self.jsonMessageLimit) } ?? L("Akış sırasında hata oluştu."))
             default: break
             }
         }
@@ -169,20 +171,25 @@ public struct AnthropicClient: Sendable {
     /// Sunucu hatasını kullanıcıya gösterilecek mesaja çevirir. Sunucu (ya da araya giren bir vekil) hata gövdesinde
     /// isteği yansıtabilir: mesajdaki anahtar karartılır, JSON olmayan ham gövde kısaltılır. Bu mesaj uygulamada uyarıya,
     /// doğrulama aracında terminale ve özet tabloya düşer.
-    func apiError(status: Int, data: Data) -> MarkaError {
+    /// H3-04: dönen hata türü (`AIErrorKind`) taşır; metin eski davranışla aynıdır (teknik yüzeyler için). Sohbet paneli metni
+    /// değil türün mesajını gösterir.
+    func apiError(status: Int, data: Data) -> AIServiceError {
+        let kind = AIErrorClassifier.classify(httpStatus: status, body: data)
         let message: String
         if let m = (try? JSONValue.parse(data))?["error"]?["message"]?.string {
             message = Self.truncated(redacted(m), limit: Self.jsonMessageLimit)
         } else {
             message = Self.truncated(redacted(String(decoding: data, as: UTF8.self)), limit: Self.rawBodyLimit)
         }
+        let text: String
         switch status {
-        case 401: return .ai(L("Claude API anahtarı geçersiz. Ayarlar › Genel'den anahtarı kontrol et."))
-        case 403: return .ai(LF("Claude erişimi reddetti: %@", message))
-        case 429: return .ai(L("Claude hız sınırına takıldı. Biraz sonra tekrar dene."))
-        case 529, 500...599: return .ai(L("Claude geçici olarak yanıt veremiyor. Biraz sonra tekrar dene."))
-        default: return .ai(LF("Claude hatası (%1$d): %2$@", status, message))
+        case 401: text = L("Claude API anahtarı geçersiz. Ayarlar › Genel'den anahtarı kontrol et.")
+        case 403: text = LF("Claude erişimi reddetti: %@", message)
+        case 429: text = L("Claude hız sınırına takıldı. Biraz sonra tekrar dene.")
+        case 529, 500...599: text = L("Claude geçici olarak yanıt veremiyor. Biraz sonra tekrar dene.")
+        default: text = LF("Claude hatası (%1$d): %2$@", status, message)
         }
+        return AIServiceError(kind: kind, status: status, technicalMessage: text)
     }
 
     /// JSON olmayan ham gövdeden gösterilecek en çok karakter.

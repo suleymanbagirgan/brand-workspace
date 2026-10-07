@@ -55,6 +55,7 @@ struct ListWithPanel<List: View>: View {
             ZStack(alignment: .trailing) {
                 list.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     // Listenin boş yerine tıklamak paneli kapatır (satırlar ve denetimler kendi tıklamalarını alır).
+                    // a11y-tarama: yok-say — paneli kapatmanın klavye/VoiceOver karşılığı Esc ve "Paneli kapat" eylemi
                     .background { Color.clear.contentShape(Rectangle()).onTapGesture { selection = nil } }
                 if let target = selection {
                     DetailPanel(target: target)
@@ -133,12 +134,12 @@ struct PanelHeader: View {
     let caption: String
     var body: some View {
         HStack(alignment: .center, spacing: Design.Space.s) {
-            Text(caption).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            Text(caption).font(Design.Font.small).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
             if let close {
                 Button(action: close) {
-                    Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    Image(systemName: "xmark").font(Design.Icon.small.weight(.semibold)).foregroundStyle(.secondary)
                         .frame(width: 28, height: 28)
-                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Design.line))
+                        .overlay(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).strokeBorder(Design.line))
                 }
                 .buttonStyle(.plain)
                 .help(L("Paneli kapat (Esc)"))
@@ -184,6 +185,7 @@ struct PanelField: View {
     var multiline = false
     let commit: () -> Void
     @FocusState private var focused: Bool
+    @State private var pendingId = UUID()
 
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.xs) {
@@ -193,19 +195,52 @@ struct PanelField: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, Design.Space.s).padding(.vertical, Design.Space.xs)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: Design.radius).fill(Design.bandBackground))
-                    .overlay(RoundedRectangle(cornerRadius: Design.radius).strokeBorder(Design.line))
+                    .background(RoundedRectangle(cornerRadius: Design.Radius.small).fill(Design.bandBackground))
+                    .overlay(RoundedRectangle(cornerRadius: Design.Radius.small).strokeBorder(Design.line))
             } else {
-                TextField(title, text: $text, axis: multiline ? .vertical : .horizontal)
-                    .lineLimit(multiline ? 2...8 : 1...1)
-                    .textFieldStyle(.roundedBorder)
-                    .labelsHidden()
-                    .focused($focused)
-                    .onSubmit(commit)
-                    .onChange(of: focused) { _, now in if !now { commit() } }
-                    .modifier(HoverHighlight(enabled: !focused))
+                if multiline {
+                    // Çok satırlı alan: Enter yeni satır açar (U-37); kayıt ⌘↩ ya da odak kaybıyla.
+                    TextEditor(text: $text)
+                        .font(.body).scrollContentBackground(.hidden)
+                        .frame(minHeight: 56, maxHeight: 180)
+                        .padding(Design.Space.xs)
+                        .background(RoundedRectangle(cornerRadius: Design.Radius.small).fill(Design.bandBackground))
+                        .overlay(RoundedRectangle(cornerRadius: Design.Radius.small).strokeBorder(focused ? AnyShapeStyle(Design.accent) : AnyShapeStyle(Design.line)))
+                        .focused($focused)
+                        .accessibilityLabel(title)
+                        .background(Button("") { saveNow() }.keyboardShortcut(.return, modifiers: .command).opacity(0).accessibilityHidden(true))
+                        .modifier(PendingBinding(text: text, focused: focused, pendingId: pendingId, commit: commit, saveNow: saveNow))
+                } else {
+                    TextField(title, text: $text)
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
+                        .focused($focused)
+                        .onSubmit(saveNow)   // tek satır: Enter kaydeder
+                        .modifier(PendingBinding(text: text, focused: focused, pendingId: pendingId, commit: commit, saveNow: saveNow))
+                        .modifier(HoverHighlight(enabled: !focused))
+                }
             }
         }
+    }
+
+    /// Kaydeder ve bekleyen girişi siler (kapanışta ikinci kez kaydetmesin).
+    private func saveNow() { PendingEdits.shared.clear(pendingId); commit() }
+}
+
+/// Alan ortak bekleyen-düzenleme bağlantısı: yazdıkça (odaktayken) kaydet kapanışı yeniden kaydedilir,
+/// odak kaybında kaydeder, kapanışta bekleyen varsa kaydeder.
+private struct PendingBinding: ViewModifier {
+    let text: String
+    let focused: Bool
+    let pendingId: UUID
+    let commit: () -> Void
+    let saveNow: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: focused) { _, now in if !now { saveNow() } }
+            .onChange(of: text) { _, _ in if focused { PendingEdits.shared.register(pendingId, save: commit) } }
+            .onDisappear { PendingEdits.shared.flush(pendingId) }
     }
 }
 
@@ -215,19 +250,25 @@ struct PanelTitleField: View {
     @Binding var text: String
     let commit: () -> Void
     @FocusState private var focused: Bool
+    @State private var pendingId = UUID()
 
     var body: some View {
         if isSnapshot {
-            Text(text).font(.system(size: 22, weight: .semibold)).tracking(-0.4).fixedSize(horizontal: false, vertical: true)
+            Text(text).font(Design.Font.title.weight(.semibold)).tracking(-0.4).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             TextField(L("Başlık"), text: $text, axis: .vertical)
-                .textFieldStyle(.plain).font(.system(size: 22, weight: .semibold)).tracking(-0.4).lineLimit(1...3)
-                .focused($focused).onSubmit(commit)
-                .onChange(of: focused) { _, now in if !now { commit() } }
+                .textFieldStyle(.plain).font(Design.Font.title.weight(.semibold)).tracking(-0.4).lineLimit(1...3)
+                .focused($focused).onSubmit(saveNow)
+                .onChange(of: focused) { _, now in if !now { saveNow() } }
+                .onChange(of: text) { _, _ in if focused { PendingEdits.shared.register(pendingId, save: commit) } }
+                .onDisappear { PendingEdits.shared.flush(pendingId) }
                 .accessibilityLabel(L("Başlık"))
         }
     }
+
+    /// Kaydeder ve bekleyen girişi siler (kapanışta ikinci kez kaydetmesin).
+    private func saveNow() { PendingEdits.shared.clear(pendingId); commit() }
 }
 
 /// Panel içinde başka bir kayda geçen bağlantı: metin düğmesi (tek ikincil biçim).
@@ -250,7 +291,7 @@ struct WorkLogPanel: View {
         let log = detail.log
         VStack(alignment: .leading, spacing: Design.Space.m) {
             PanelHeader(caption: L("İş kaydı") + " · " + log.status.title)
-            Text(log.title).font(Design.Font.section).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            Text(log.title).font(Design.Font.body.weight(.bold)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             PanelQA(L("Ne istendi?"), log.requested)
             files(L("Hangi dosyalar kullanıldı?"), detail.inputs)
             PanelQA(L("Ne yapıldı?"), log.performed)
@@ -309,6 +350,7 @@ struct TaskPanel: View {
     @State private var notes: String
     @State private var assignee: String
     @State private var deleting = false
+    @State private var writingLog: WorkLogDetail?
 
     init(task: WorkTask) {
         self.task = task
@@ -331,10 +373,15 @@ struct TaskPanel: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .card(padding: 16)
+            TaskTimeSection(task: task)
+            if task.status == .done { workLogAction }
             if task.status.isOpen {
                 Button { save { $0.status = .done } } label: { Label(L("Tamamlandı olarak işaretle"), systemImage: "checkmark").labelStyle(.titleAndIcon) }
                     .actionPrimary().padding(.top, Design.Space.s)
-                OpenItemActions(title: task.title, isTask: true, deleting: $deleting,
+                // Süre kaydı olan görev silinmez (çekirdek de reddeder); onay penceresi bunun yerine iptal etmeyi önerir.
+                let time = try? app.store?.taskTimeSummary(taskId: task.id, brandId: task.brandId, now: app.now)
+                OpenItemActions(title: task.title, isTask: true, timeSeconds: (time?.count ?? 0) > 0 ? time?.seconds : nil,
+                                deleting: $deleting,
                                 cancel: { save { $0.status = .cancelled } },
                                 delete: {
                                     if app.perform(context: "yapilacak.sil", { try app.store?.deleteTask(task.id) }) != nil { close?() }
@@ -342,6 +389,24 @@ struct TaskPanel: View {
             }
         }
         .onChange(of: task) { _, t in title = t.title; notes = t.notes; assignee = t.assignee }
+        .sheet(item: $writingLog) { d in WorkLogEditor(detail: d, isNew: true).environment(app) }
+    }
+
+    /// Biten görev: "İş kaydı yaz" (H2-03, U-09). Kaydı yoksa neden gerektiği söylenir; yapay zekâ gerekmez.
+    @ViewBuilder private var workLogAction: some View {
+        let _ = app.revision
+        let needs = (try? app.store?.needsWorkLog(taskId: task.id)) ?? false
+        VStack(alignment: .leading, spacing: Design.Space.xs) {
+            if needs {
+                Text(L("Bu görevin iş kaydı yok; rapora girmez.")).captionStyle().fixedSize(horizontal: false, vertical: true)
+            }
+            Button { writingLog = .newDraft(for: task) } label: {
+                Label(L("İş kaydı yaz"), systemImage: "square.and.pencil").labelStyle(.titleAndIcon)
+            }
+            .modifier(WorkLogButtonStyle(primary: needs))
+            .help(L("Yaptığın işi yaz; kaydettiğinde doğrulanmış sayılır ve rapora girer."))
+        }
+        .padding(.top, Design.Space.s)
     }
 
     private func commit() {
@@ -358,10 +423,20 @@ struct TaskPanel: View {
     }
 }
 
+/// "İş kaydı yaz" düğmesi: kaydı olmayan görevde birincil, varsa ikincil.
+private struct WorkLogButtonStyle: ViewModifier {
+    let primary: Bool
+    func body(content: Content) -> some View {
+        if primary { content.actionPrimary() } else { content.actionSecondary() }
+    }
+}
+
 /// Açık görev ve açık söz/karar/talep panelinin altı: *İptal et* ve *Sil…* (onaylı). Sağ tık menüsündekiyle aynı eylemler.
 struct OpenItemActions: View {
     let title: String
     let isTask: Bool
+    /// Görevin süre kaydı toplamı (kayıt varsa). Doluysa silme yerine iptal önerilir (U-01): süreler faturalıktır.
+    var timeSeconds: Int? = nil
     @Binding var deleting: Bool
     let cancel: () -> Void
     let delete: () -> Void
@@ -372,12 +447,163 @@ struct OpenItemActions: View {
             Button(L("İptal et"), action: cancel).buttonStyle(.text)
                 .help(L("Listeden kalkar; silinmez."))
         }
-        .confirmationDialog(L("Silinsin mi?"), isPresented: $deleting) {
-            Button(L("Sil"), role: .destructive, action: delete)
+        .confirmationDialog(timeSeconds == nil ? L("Silinsin mi?") : L("Görev silinemez"), isPresented: $deleting) {
+            if timeSeconds == nil {
+                Button(L("Sil"), role: .destructive, action: delete)
+            } else {
+                Button(L("İptal et"), action: cancel)
+            }
         } message: {
-            Text(isTask
-                 ? LF("“%@” görevi kalıcı olarak silinir. Bağlı iş kayıtları kalır, yalnızca görev bağlantıları kalkar. Bu işlem geri alınamaz.", title)
-                 : LF("“%@” kalıcı olarak silinir. Bu işlem geri alınamaz.", title))
+            if let timeSeconds {
+                Text(LF("“%1$@” görevinde süre kaydı var; silinirse faturalık süreler de kaybolur. Görevi iptal et, süre kayıtları korunur. Süre kaydı: %2$@",
+                        title, DurationFormat.short(timeSeconds)))
+            } else {
+                Text(isTask
+                     ? LF("“%@” görevi kalıcı olarak silinir. Bağlı iş kayıtları kalır, yalnızca görev bağlantıları kalkar. Bu işlem geri alınamaz.", title)
+                     : LF("“%@” kalıcı olarak silinir. Bu işlem geri alınamaz.", title))
+            }
+        }
+    }
+}
+
+// MARK: - Görevin süre kayıtları (U-03)
+
+/// Görev panelinde süre kayıtları: liste, elle ekle, düzenle, sil. Yazmalar çekirdekte denetim olayı bırakır ve markaya
+/// yalıtılıdır; kurallar (negatif/gelecek/çakışan süre) çekirdekte. Çalışan sayaç listede görünür ama düzenlenmez.
+struct TaskTimeSection: View {
+    @Environment(AppModel.self) private var app
+    let task: WorkTask
+    @State private var editing: TimeEntryDraft?
+    @State private var removing: TimeEntry?
+
+    var body: some View {
+        let _ = app.revision
+        let entries = app.read(or: []) { try $0.timeEntries(taskId: task.id, brandId: task.brandId) }
+        let total = (try? app.store?.taskTimeSummary(taskId: task.id, brandId: task.brandId, now: app.now))?.seconds ?? 0
+        VStack(alignment: .leading, spacing: Design.Space.s) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(entries.isEmpty ? L("Süre kayıtları") : LF("Süre kayıtları · toplam %@", DurationFormat.short(total)))
+                    .captionStyle()
+                Spacer()
+                Button { editing = .new(for: task) } label: { Label(L("Süre ekle"), systemImage: "plus") }
+                    .buttonStyle(.text)
+                    .help(L("Unutulan çalışmayı elle ekle."))
+            }
+            if let running = entries.first(where: \.isRunning), running.isLongRunning(now: app.now) {
+                Label(L("Zamanlayıcı 8 saatten uzun süredir çalışıyor. Unuttuysan durdur, sonra kaydı düzelt."), systemImage: "exclamationmark.triangle")
+                    .font(Design.Font.small).foregroundStyle(Design.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if entries.isEmpty {
+                Text(L("Henüz süre kaydı yok.")).captionStyle()
+            }
+            ForEach(entries) { e in row(e) }
+        }
+        .sheet(item: $editing) { d in TimeEntryEditor(draft: d).environment(app) }
+        .confirmationDialog(L("Süre kaydı silinsin mi?"), isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                            presenting: removing) { e in
+            Button(L("Sil"), role: .destructive) {
+                app.perform(title: L("Süre kaydı silinemedi"), context: "sure.sil") { try app.store?.deleteTimeEntry(e.id, brandId: e.brandId) }
+            }
+        } message: { e in
+            Text(LF("Bu süre rapordaki “Harcanan süre”den ve finanstan düşer. Bu işlem geri alınamaz. Süre: %@", DurationFormat.short(e.seconds)))
+        }
+    }
+
+    @ViewBuilder private func row(_ e: TimeEntry) -> some View {
+        // Gece yarısını geçen kayıtta bitişin günü de yazılır.
+        let endFormat: Date.FormatStyle = e.endedAt.map { Calendar.current.isDate($0, inSameDayAs: e.startedAt) } == false
+            ? .dateTime.day().month(.abbreviated).hour().minute() : .dateTime.hour().minute()
+        let span = e.startedAt.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+            + "–" + (e.endedAt?.formatted(endFormat) ?? L("şimdi"))
+        let duration = e.isRunning ? L("Çalışıyor") : DurationFormat.short(e.seconds)
+        HStack(alignment: .firstTextBaseline, spacing: Design.Space.s) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: span).monospacedDigit()
+                if !e.note.isEmpty { Text(e.note).captionStyle().lineLimit(2) }
+            }
+            Spacer(minLength: Design.Space.s)
+            Text(verbatim: duration).monospacedDigit().foregroundStyle(.secondary)
+            if !e.isRunning {
+                Button { editing = .edit(e) } label: { Image(systemName: "pencil") }
+                    .buttonStyle(.borderless).help(L("Süre kaydını düzenle"))
+                    .accessibilityLabel(L("Süre kaydını düzenle"))
+                Button { removing = e } label: { Image(systemName: "trash") }
+                    .buttonStyle(.borderless).help(L("Süre kaydını sil"))
+                    .accessibilityLabel(L("Süre kaydını sil"))
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(span + ", " + duration)
+    }
+}
+
+/// Eklenecek ya da düzenlenecek süre kaydı (sayfa durumu).
+struct TimeEntryDraft: Identifiable {
+    let id = UUID()
+    var entryId: String?
+    var taskId: String
+    var brandId: String
+    var startedAt: Date
+    var endedAt: Date
+    var note: String
+
+    static func new(for task: WorkTask, now: Date = Date()) -> TimeEntryDraft {
+        let end = Date(timeIntervalSinceReferenceDate: (now.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60)
+        return TimeEntryDraft(taskId: task.id, brandId: task.brandId, startedAt: end.addingTimeInterval(-3600), endedAt: end, note: "")
+    }
+
+    static func edit(_ e: TimeEntry) -> TimeEntryDraft {
+        TimeEntryDraft(entryId: e.id, taskId: e.taskId, brandId: e.brandId, startedAt: e.startedAt,
+                       endedAt: e.endedAt ?? e.startedAt, note: e.note)
+    }
+}
+
+/// Süre kaydı düzenleyici. Kural ihlali (negatif, gelecek, çakışan, 24 saatten uzun) çekirdekten gelir ve sayfada gösterilir.
+struct TimeEntryEditor: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @State var draft: TimeEntryDraft
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Design.Space.m) {
+            Text(draft.entryId == nil ? L("Süre ekle") : L("Süre kaydını düzenle"))
+                .font(Design.Font.heading.weight(.semibold)).accessibilityAddTraits(.isHeader)
+            Grid(alignment: .leading, horizontalSpacing: Design.Space.m, verticalSpacing: Design.Space.s) {
+                GridRow { Text(L("Başlangıç")).captionStyle(); DateTimeField(date: $draft.startedAt) }
+                GridRow { Text(L("Bitiş")).captionStyle(); DateTimeField(date: $draft.endedAt) }
+                GridRow { Text(L("Not")).captionStyle(); InputField(title: L("Not"), text: $draft.note) }
+            }
+            let seconds = Int(draft.endedAt.timeIntervalSince(draft.startedAt))
+            Text(seconds > 0 ? LF("Süre: %@", DurationFormat.short(seconds)) : L("Bitiş, başlangıçtan sonra olmalı."))
+                .captionStyle()
+            if let problem {
+                Text(problem).font(Design.Font.small).foregroundStyle(Design.danger).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: Design.Space.m) {
+                Spacer()
+                Button(L("Vazgeç")) { dismiss() }.buttonStyle(.text).keyboardShortcut(.cancelAction)
+                Button(L("Kaydet"), action: save).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(Design.Space.l)
+        .frame(minWidth: 420)
+    }
+
+    private func save() {
+        guard let store = app.store else { return }
+        do {
+            if let id = draft.entryId {
+                try store.updateTimeEntry(id, brandId: draft.brandId, startedAt: draft.startedAt, endedAt: draft.endedAt, note: draft.note)
+            } else {
+                try store.addTimeEntry(taskId: draft.taskId, brandId: draft.brandId, startedAt: draft.startedAt,
+                                       endedAt: draft.endedAt, note: draft.note)
+            }
+            dismiss()
+        } catch {
+            problem = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 }
@@ -442,7 +668,20 @@ struct RecordPanel: View {
 /// Dosya ya da not: başlık, tarih, içerik önizlemesi. Değiştirilemez; yalnız arşivlenir (arşivlenen Akış'tan kalkar).
 struct SourcePanel: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.undoManager) private var undoManager
     let source: Source
+
+    /// Arşivler ya da arşivden çıkarır (kaynağın markasıyla kapsanır); tersi ⌘Z ile geri alınır. Panel açık kalır,
+    /// başlıktaki "Arşivlendi" ve "Arşivden çıkar" düğmesi de anında geri dönüş yoludur.
+    private func toggleArchive() {
+        let id = source.id, brandId = source.brandId, archive = source.archivedAt == nil
+        let ok: Void? = app.perform(context: "kaynak.arsiv") { try app.store?.setSourceArchived(id, brandId: brandId, archived: archive) }
+        guard ok != nil else { return }
+        undoManager?.registerUndo(withTarget: app) { app in
+            MainActor.assumeIsolated { _ = app.perform(context: "kaynak.arsiv.geri-al") { try app.store?.setSourceArchived(id, brandId: brandId, archived: !archive) } }
+        }
+        undoManager?.setActionName(archive ? L("Arşivle") : L("Arşivden çıkar"))
+    }
 
     var body: some View {
         let file = app.store?.fileURL(for: source)
@@ -450,7 +689,7 @@ struct SourcePanel: View {
             PanelHeader(caption: [file == nil ? L("Not") : L("Dosya"),
                                   source.capturedAt.formatted(.dateTime.day().month(.wide).hour().minute()),
                                   source.archivedAt == nil ? "" : L("Arşivlendi")].filter { !$0.isEmpty }.joined(separator: " · "))
-            Text(source.title).font(Design.Font.section).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            Text(source.title).font(Design.Font.body.weight(.bold)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             if let name = source.fileName { Text(name).captionStyle().lineLimit(1).truncationMode(.middle) }
             if let file, source.mimeType?.hasPrefix("image/") == true, let image = NSImage(contentsOf: file) {
                 Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 240)
@@ -463,9 +702,7 @@ struct SourcePanel: View {
             }
             if let url = source.url, let u = URL(string: url) { Link(url, destination: u).foregroundStyle(.primary) }
             PanelActions {
-                Button(source.archivedAt == nil ? L("Arşivle") : L("Arşivden çıkar")) {
-                    app.perform(context: "kaynak.arsiv") { try app.store?.setSourceArchived(source.id, archived: source.archivedAt == nil) }
-                }
+                Button(source.archivedAt == nil ? L("Arşivle") : L("Arşivden çıkar"), action: toggleArchive)
                 .buttonStyle(.text)
                 .help(L("Dosya ve notlar silinmez; arşivlenen Akış'tan ve rapordan kalkar."))
                 if let file {
@@ -489,8 +726,11 @@ struct ProposalPanel: View {
                 ? (proposal.payload(ProposalPayload.CreateBrandRecord.self)?.kind.title ?? proposal.kind.flowTitle)
                 : proposal.kind.flowTitle
             PanelHeader(caption: kind + " · " + proposal.status.title)
-            Text(proposal.displayTitle).font(Design.Font.section).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            Text(proposal.displayTitle).font(Design.Font.body.weight(.bold)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             if let d = proposal.decidedAt { PanelQA(L("Ne zaman onaylandı?"), d.formatted(.dateTime.day().month(.wide).hour().minute())) }
+            if let preview = app.store?.proposalPreview(proposal) {
+                PanelQA(L("Ne değişti?"), preview.lines().joined(separator: "\n"))
+            }
             if let target = resultTarget, proposal.status == .applied {
                 link(L("Sonucu göster")) { app.panelTarget = target }
             }
@@ -504,6 +744,8 @@ struct ProposalPanel: View {
                         .buttonStyle(.text)
                         .help(proposal.kind == .wikiRevision
                               ? L("Sayfa önceki sürümüne döner; bu sürüm geçmişte kalır.")
+                              : proposal.kind == .updateTask
+                              ? L("Onayı geri alır; görevin önceki başlığı, son tarihi ve durumu geri gelir.")
                               : L("Onayı geri alır; eklenen görev, iş kaydı ya da söz kaldırılır (dosya ve notlar arşivlenir)."))
                 }
             }
@@ -513,11 +755,11 @@ struct ProposalPanel: View {
     private var resultTarget: PanelTarget? {
         guard let rid = proposal.resultEntityId else { return nil }
         switch proposal.kind {
-        case .createTask, .completeTask: return .task(rid)
+        case .createTask, .completeTask, .updateTask: return .task(rid)
         case .createWorkLog: return .workLog(rid)
         case .createNote, .createOutput: return .source(rid)
         case .createBrandRecord: return .record(rid)
-        case .wikiRevision: return nil
+        case .wikiRevision, .createTeamMember, .createObservation: return nil
         }
     }
 }
@@ -553,11 +795,14 @@ extension ProposalKind {
         switch self {
         case .createTask: L("Yeni görev")
         case .completeTask: L("Görevi bitir")
+        case .updateTask: L("Görevi güncelle")
         case .createWorkLog: L("İş kaydı")
         case .createBrandRecord: L("Söz, talep ya da karar")
         case .createNote: L("Not")
         case .createOutput: L("Dosya")
         case .wikiRevision: L("Hafıza güncellemesi")
+        case .createTeamMember: L("Yeni çalışan")
+        case .createObservation: L("Marka gözlemi")
         }
     }
 }

@@ -165,7 +165,9 @@ extension AIProposal {
         case .createWorkLog: payload(ProposalPayload.CreateWorkLog.self)?.title ?? summary
         case .createNote: payload(ProposalPayload.CreateNote.self)?.title ?? summary
         case .createOutput: payload(ProposalPayload.CreateOutput.self)?.title ?? summary
-        case .completeTask, .wikiRevision: summary
+        case .createTeamMember: payload(ProposalPayload.CreateTeamMember.self)?.name ?? summary
+        case .createObservation: payload(ProposalPayload.CreateObservation.self)?.statement ?? summary
+        case .completeTask, .updateTask, .wikiRevision: summary
         }
     }
 }

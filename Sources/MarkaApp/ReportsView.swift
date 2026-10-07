@@ -61,8 +61,8 @@ struct ReportsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 32).padding(.horizontal, 24)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Design.canvas))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Design.line))
+            .background(RoundedRectangle(cornerRadius: Design.Radius.large, style: .continuous).fill(Design.canvas))
+            .overlay(RoundedRectangle(cornerRadius: Design.Radius.large, style: .continuous).strokeBorder(Design.line))
             history(p).frame(maxWidth: 720, alignment: .leading)
         }
     }
@@ -75,7 +75,7 @@ struct ReportsView: View {
         VStack(alignment: .leading, spacing: Design.Space.l) {
             SectionHeading(title: L("Rapor"), subtitle: L("Müşteri özeti"), symbol: "doc.text", tintKey: brand.id) { actions(p) }
             HStack(spacing: Design.Space.s) {
-                Text(Self.rangeText(p.interval)).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(Self.rangeText(p.interval)).font(Design.Font.callout).foregroundStyle(.secondary)
                 Text(L("· yalnız doğrulanmış iş kayıtlarından")).captionStyle().lineLimit(1)
                 Spacer(minLength: Design.Space.m)
                 // Dönem: dört sabit dönem (kaydedilmiş raporlar Geçmiş'te).
@@ -84,7 +84,7 @@ struct ReportsView: View {
                         Button(title(r)) { editing = nil; range = r; opened = nil }
                     }
                 } label: {
-                    Text(L("Dönemi değiştir") + " · " + periodTitle).font(.system(size: 12)).foregroundStyle(Design.accent)
+                    Text(L("Dönemi değiştir") + " · " + periodTitle).font(Design.Font.callout).foregroundStyle(Design.accent)
                 }
                 .menuStyle(.borderlessButton).fixedSize()
                 .help(L("Dönem"))
@@ -97,7 +97,7 @@ struct ReportsView: View {
     @ViewBuilder private func actions(_ p: ReportPreview) -> some View {
         if let draft = editing {
             let hasSummary = !draft.summary.isEmpty
-            if hasSummary || brand.allows(.anthropic) || brand.allows(.codex) {
+            if hasSummary || brand.allows(.anthropic) || (brand.allows(.codex) && AIProviderKind.codex.isSelectable) {
                 // Tek düğme: özet yoksa AI ile yazdırır, varsa kaldırır.
                 Button(hasSummary ? L("Özeti kaldır") : (summarizing ? L("Yazılıyor…") : L("AI ile özet"))) {
                     if hasSummary { editing?.summary = [] } else { summarize() }
@@ -107,7 +107,7 @@ struct ReportsView: View {
                 .help(hasSummary ? L("AI özetini rapordan çıkarır") : summaryChoice.help)
             }
             Button(L("Vazgeç")) { editing = nil }.actionSecondary().keyboardShortcut(.cancelAction)
-            Button(L("Kaydet")) { save(p) }.actionPrimary()
+            Button(L("Kaydet")) { save(p) }.actionPrimary().keyboardShortcut("s", modifiers: .command)
         } else {
             Button(L("Düzenle")) { editing = p.content }.actionSecondary().disabled(p.isEmpty)
             Button { mailDraft(p) } label: { Label(L("E-posta taslağı"), systemImage: "envelope").labelStyle(.titleAndIcon) }
@@ -188,10 +188,10 @@ struct ReportsView: View {
     /// Hazırlık satırı: ✓ tamam, ! dikkat; dikkat satırında tek eylem.
     private func check(ok: Bool, text: String, action: (String, () -> Void)?) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill").font(.system(size: 15))
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill").font(Design.Icon.medium)
                 .foregroundStyle(ok ? AnyShapeStyle(Color.green) : AnyShapeStyle(Color.orange)).accessibilityHidden(true)
-            Text(text).font(.system(size: 12)).frame(maxWidth: .infinity, alignment: .leading)
-            if let action { Button(action.0, action: action.1).buttonStyle(.text) }
+            Text(text).font(Design.Font.callout).frame(maxWidth: .infinity, alignment: .leading)
+            if let action { Button(action: action.1) { Text(action.0).foregroundStyle(ok ? AnyShapeStyle(.primary) : AnyShapeStyle(Design.accent)) }.buttonStyle(.text) }
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
         .accessibilityElement(children: .combine)
@@ -327,12 +327,17 @@ struct ReportsView: View {
                 case .anthropic:
                     provider = .anthropic(AnthropicClient(apiKey: key ?? "", model: app.anthropicModel, effort: app.anthropicEffort.isEmpty ? nil : app.anthropicEffort))
                 case .codex:
+                    #if MAS
+                    // MAS derlemesinde seçilmez (SummaryProviderChoice); yine de gelirse çalıştırılmaz.
+                    throw MarkaError.ai(L("Bu sağlayıcı bu sürümde kullanılamaz."))
+                    #else
                     // Markanın yalıtımlı Codex süreci: özet turu da diğer markaların klasörlerini okuyamaz.
                     guard let engine = app.engine else { throw MarkaError.ai(L("Çalışma alanı açık değil.")) }
                     let server = try await engine.retainCodexServer(for: .brand(brand.id))
                     releaseCodex = { await engine.releaseCodexServer(for: .brand(brand.id)) }
                     let model = app.codexModel.isEmpty ? (try await server.models().first(where: \.isDefault)?.id ?? "") : app.codexModel
                     provider = .codex(server, model: model, cwd: try app.folders!.folder(for: .brand(brand.id)))
+                    #endif
                 case .missingAnthropicKey, .notAllowed:
                     throw MarkaError.ai(choice.unavailableReason ?? "")
                 }
@@ -371,7 +376,7 @@ struct ReportPage: View {
         VStack(alignment: .leading, spacing: Design.Space.l) {
             VStack(alignment: .leading, spacing: Design.Space.xs) {
                 Text(caption).captionStyle()
-                Text(brandName).font(Design.Font.title).accessibilityAddTraits(.isHeader)
+                Text(brandName).font(Design.Font.heading.weight(.semibold)).accessibilityAddTraits(.isHeader)
             }
             if let draft {
                 TextField(L("Giriş notu (isteğe bağlı)"), text: draft.intro, axis: .vertical)
@@ -395,7 +400,7 @@ struct ReportPage: View {
         }
         .padding(44)
         .frame(maxWidth: 680, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Design.reportPaper))
+        .background(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).fill(Design.reportPaper))
         .shadow(color: .black.opacity(0.10), radius: 14, y: 4)
         .shadow(color: .black.opacity(0.05), radius: 1, y: 0)
         // Rapor müşteriye giden belgedir: her iki görünümde açık kâğıt, koyu yazı.
@@ -404,7 +409,7 @@ struct ReportPage: View {
 
     private func block<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: Design.Space.s) {
-            Text(title).font(Design.Font.section).accessibilityAddTraits(.isHeader)
+            Text(title).font(Design.Font.body.weight(.bold)).accessibilityAddTraits(.isHeader)
             content()
         }
     }
@@ -443,7 +448,7 @@ struct HistoryList: View {
     var body: some View {
         let versions = current.flatMap { try? app.store?.reportVersions(reportId: $0.id) } ?? []
         let shares = current.flatMap { try? app.store?.reportShares(reportId: $0.id) } ?? []
-        let saved = ((try? app.store?.reports(brandId: brandId)) ?? []).filter { $0.id != current?.id }
+        let saved = (app.read(or: []) { try $0.reports(brandId: brandId) }).filter { $0.id != current?.id }
         VStack(alignment: .leading, spacing: 0) {
             if versions.isEmpty && shares.isEmpty {
                 EmptyStateView(message: L("Bu rapor henüz kaydedilmedi; ilk PDF, e-posta taslağı ya da düzenlemede kaydedilir."))

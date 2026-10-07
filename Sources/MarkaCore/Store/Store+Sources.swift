@@ -57,9 +57,9 @@ public enum FileImportGuard {
         if values?.isSymbolicLink == true {
             throw MarkaError.validation(L("Sembolik bağ içe aktarılamaz; bağın gösterdiği gerçek dosyayı seç."))
         }
-        let canonical = SandboxProfile.canonical(url.path)
+        let canonical = PathCanonical.canonical(url.path)
         if let root {
-            let base = SandboxProfile.canonical(root.path)
+            let base = PathCanonical.canonical(root.path)
             if canonical != base && !canonical.hasPrefix(base + "/") {
                 throw MarkaError.validation(L("Bu dosya marka klasörünün dışını gösteriyor; içe aktarılmadı."))
             }
@@ -190,13 +190,13 @@ extension Store {
     /// Yeni metin içerikli iş çıktısı dosyası üretir (AI veya kullanıcı).
     @discardableResult
     public func addGeneratedOutput(brandId: String, fileName: String, content: String, title: String,
-                                   actor: Actor) throws -> Source {
+                                   capturedAt: Date = Date(), actor: Actor) throws -> Source {
         let data = Data(content.utf8)
         let ext = (fileName as NSString).pathExtension.isEmpty ? "md" : (fileName as NSString).pathExtension
         let stored = try vault.store(data: data, fileExtension: ext)
         let source = Source(brandId: brandId, kind: .workOutput, title: title.trimmed.isEmpty ? fileName : title,
                             body: content, fileName: fileName, filePath: stored.relativePath, mimeType: "text/markdown",
-                            sha256: stored.sha256, byteSize: stored.byteSize, capturedAt: Date(), actor: actor)
+                            sha256: stored.sha256, byteSize: stored.byteSize, capturedAt: capturedAt, actor: actor)
         return try insertSource(source)
     }
 
@@ -204,7 +204,7 @@ extension Store {
         try writer.write { db in try insertSource(db, source) }
     }
 
-    private func insertSource(_ db: Database, _ source: Source) throws -> Source {
+    func insertSource(_ db: Database, _ source: Source) throws -> Source {
         guard try Brand.fetchOne(db, key: source.brandId) != nil else { throw MarkaError.notFound(source.brandId) }
         try source.insert(db)
         try audit(db, actor: source.actor, brandId: source.brandId, entity: "source", entityId: source.id,
@@ -212,9 +212,14 @@ extension Store {
         return source
     }
 
-    public func setSourceArchived(_ id: String, archived: Bool, actor: Actor = .user) throws {
+    /// Kaynağı arşivler ya da arşivden çıkarır. Yalnız `archivedAt` değişir (ham kaynak tetikleyicisi diğer sütunları korur).
+    /// `brandId` verilirse kaynak o markaya ait olmalıdır (marka yalıtımı); arayüz her zaman görünen markayı verir.
+    /// Durum zaten istenen gibiyse hiçbir şey yazılmaz (yinelenen denetim olayı yok, arşiv damgası korunur).
+    public func setSourceArchived(_ id: String, brandId: String? = nil, archived: Bool, actor: Actor = .user) throws {
         try writer.write { db in
             guard var s = try Source.fetchOne(db, key: id) else { throw MarkaError.notFound(id) }
+            if let brandId, s.brandId != brandId { throw MarkaError.brandScope }
+            guard (s.archivedAt != nil) != archived else { return }
             let before = SourceAuditView(s)
             s.archivedAt = archived ? Date() : nil
             try s.update(db, columns: ["archivedAt"])

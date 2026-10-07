@@ -10,7 +10,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TAB=${1:?bölüm}; OUT=${2:?çıktı}; MODE=${3:-light}
 WORK=$(mktemp -d)
 # Deneme kopyasının tercih alanı (yol özetli) da silinir; yoksa her çalıştırma ~/Library/Preferences'ta bir plist bırakır.
-cleanup() { rm -rf "$WORK"; rm -f "$HOME"/Library/Preferences/com.markacalismaalani.app.deneme.*.plist 2>/dev/null; }
+PID=""
+cleanup() { [ -n "$PID" ] && { kill $PID 2>/dev/null; sleep 1; kill -9 $PID 2>/dev/null; }; rm -rf "$WORK"; rm -f "$HOME"/Library/Preferences/com.markacalismaalani.app.deneme.*.plist 2>/dev/null; }
 trap cleanup EXIT
 swiftc -O "$ROOT/scripts/pencere-id.swift" -o "$WORK/pencere-id"
 mkdir -p "$WORK/ws" "$WORK/folders"
@@ -20,5 +21,5 @@ MARKA_WORKSPACE="$WORK/ws" MARKA_FOLDERS="$WORK/folders" MARKA_SEKME=$TAB MARKA_
 PID=$!
 sleep 5
 ID=$("$WORK/pencere-id" $PID)
-if [ -n "$ID" ]; then screencapture -x -o -l "$ID" "$OUT"; echo "yakalandı: $OUT"; else echo "pencere bulunamadı (Ekran Kaydı izni?)"; fi
+if [ -n "$ID" ] && screencapture -x -o -l "$ID" "$OUT"; then echo "yakalandı: $OUT"; else echo "yakalanamadı (ekran kilitli ya da Ekran Kaydı izni yok)"; fi
 kill $PID 2>/dev/null; sleep 1; kill -9 $PID 2>/dev/null; true

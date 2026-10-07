@@ -1,3 +1,5 @@
+#if !MAS
+// Codex App Server süreci: Mac App Store derlemesinde (`-DMAS`) yoktur (sandbox geçişi S2).
 import Foundation
 
 /// OpenAI Codex App Server istemcisi: kullanıcının kurulu `codex` aracını `codex app-server` olarak başlatır,
@@ -42,6 +44,8 @@ public actor CodexAppServer {
     /// `false`: süreç profil altında başlar ama tur çalıştırmaz (denetim süreci: hesap/giriş/model listesi). Kullanıcının
     /// `codex` ikilisi kurcalanmış olsa bile marka klasörleri OS düzeyinde kapalıdır; profil uygulanamazsa yalıtımsız başlar.
     private let controlOnly: Bool
+    /// İçeriksiz tanı kaydı (bulma ve yanıt yazma hataları); nil ise kayıt tutulmaz (testler, doğrulama aracı).
+    private let diagnostics: DiagnosticsLog?
     private var resumed = Set<String>()
     private var process: Process?
     private var stdin: FileHandle?
@@ -58,15 +62,16 @@ public actor CodexAppServer {
     ///   `nil` ise yalıtımsız başlar: yalnızca hesap, giriş ve model listesi içindir; tur çalıştırılmaz.
     ///   `controlOnly` verildiğinde profil altında başlar ama tur çalıştırmaz (denetim süreci).
     public init(clientVersion: String = MarkaCoreVersion.string, isolation: (@Sendable (URL) throws -> Isolation)? = nil,
-                controlOnly: Bool = false) {
+                controlOnly: Bool = false, diagnostics: DiagnosticsLog? = nil) {
         self.clientVersion = clientVersion
         self.isolationProvider = isolation
         self.controlOnly = controlOnly
+        self.diagnostics = diagnostics
     }
 
     // MARK: Bulma
 
-    public static func locateBinary() -> URL? {
+    public static func locateBinary(diagnostics: DiagnosticsLog? = nil) -> URL? {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let candidates = [
             home.appendingPathComponent(".local/bin/codex"),
@@ -88,7 +93,10 @@ public actor CodexAppServer {
             let path = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
                 .split(separator: "\n").last.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
             if !path.isEmpty, FileManager.default.isExecutableFile(atPath: path) { return URL(fileURLWithPath: path) }
-        } catch {}
+        } catch {
+            // Kabuk başlatılamadı: "bulunamadı" yoluna düşülür; kayda yalnız hata türü girer (yol ya da çıktı değil).
+            diagnostics?.record(error, context: "codex.bul")
+        }
         return nil
     }
 
@@ -107,7 +115,7 @@ public actor CodexAppServer {
     private func launch() async throws {
         // Ölmüş sürecin borusuna yazmak uygulamayı SIGPIPE ile kapatmasın.
         signal(SIGPIPE, SIG_IGN)
-        guard let binary = Self.locateBinary() else {
+        guard let binary = Self.locateBinary(diagnostics: diagnostics) else {
             state = .failed(L("codex bulunamadı"))
             throw MarkaError.ai(L("Codex CLI bulunamadı. Codex'i kurduktan sonra tekrar dene (Ayarlar › AI)."))
         }
@@ -319,7 +327,7 @@ public actor CodexAppServer {
         } else if method == "item/tool/call" {
             result = ["success": false, "contentItems": [["type": "inputText", "text": "Bu oturum için araç yürütücüsü yok."]]]
         }
-        try? send(.object(["id": id, "result": result]))
+        do { try send(.object(["id": id, "result": result])) } catch { diagnostics?.record(error, context: "codex.istek-yaniti") }
     }
 
     // MARK: Hesap ve modeller
@@ -483,3 +491,4 @@ actor TurnCollector {
         return await withCheckedContinuation { waiters.append($0) }
     }
 }
+#endif

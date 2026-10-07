@@ -1,208 +1,6 @@
 import Foundation
 import GRDB
 
-/// Terminal ve Codex'in çalıştığı marka klasörleri. Veri tabanına yazmazlar; yalnızca bağlam anlık görüntüsü ve çıktılar.
-public struct BrandFolders: Sendable {
-    public let root: URL
-    public let store: Store
-
-    public init(root: URL, store: Store) { self.root = root; self.store = store }
-
-    public static var defaultRoot: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Marka Çalışma Alanı", isDirectory: true)
-    }
-
-    /// "Tüm markalar" kapsamının klasör adı. Marka ad alanının dışındadır: bu ada sahip bir marka bu klasörü paylaşamaz.
-    public static let allBrandsFolderName = "_Tüm Markalar"
-
-    static func safeName(_ name: String) -> String {
-        let cleaned = name.components(separatedBy: CharacterSet(charactersIn: "/:\\?%*|\"<>")).joined(separator: "-").trimmed
-        return cleaned.isEmpty ? "Marka" : cleaned
-    }
-
-    public func folder(for scope: SessionScope) throws -> URL {
-        let fm = FileManager.default
-        switch scope {
-        case .allBrands:
-            let u = root.appendingPathComponent(Self.allBrandsFolderName, isDirectory: true)
-            try fm.createDirectory(at: u, withIntermediateDirectories: true)
-            return u
-        case .brand(let id):
-            let key = "folder.\(id)"
-            if let saved = try store.setting(key) {
-                let u = URL(fileURLWithPath: saved, isDirectory: true)
-                try fm.createDirectory(at: u.appendingPathComponent("ciktilar"), withIntermediateDirectories: true)
-                return u
-            }
-            let brand = try store.brand(id)
-            let base = Self.safeName(brand.name)
-            func candidate(_ n: Int) -> URL { root.appendingPathComponent(n == 1 ? base : "\(base) \(n)", isDirectory: true) }
-            var n = 1
-            var u = candidate(n)
-            // Rezerve "_Tüm Markalar" adı marka klasörü olamaz: aynı ada sahip marka "… 2" alır, tüm-markalar klasörünü paylaşmaz.
-            while fm.fileExists(atPath: u.path) || u.lastPathComponent == Self.allBrandsFolderName {
-                n += 1
-                u = candidate(n)
-            }
-            try fm.createDirectory(at: u.appendingPathComponent("ciktilar"), withIntermediateDirectories: true)
-            try store.setSetting(key, u.path)
-            return u
-        }
-    }
-
-    /// Markanın daha önce oluşturulmuş klasörü; hiç oluşturulmadıysa `nil` (klasör oluşturmaz, ayar yazmaz).
-    public func existingFolder(brandId: String) throws -> URL? {
-        guard let saved = try store.setting("folder.\(brandId)") else { return nil }
-        let u = URL(fileURLWithPath: saved, isDirectory: true)
-        return FileManager.default.fileExists(atPath: u.path) ? u : nil
-    }
-
-    /// BAGLAM.md: yalnızca bu markanın bağlamı. Terminaldeki araçlar bu dosyayı okuyabilir.
-    @discardableResult
-    public func writeContextFile(brandId: String) throws -> URL {
-        let dir = try folder(for: .brand(brandId))
-        let brand = try store.brand(brandId)
-        // Öneri kutusu: terminaldeki araçlar yaptıklarını buraya JSON olarak bırakır (bkz. `SuggestionInbox`).
-        try? FileManager.default.createDirectory(at: dir.appendingPathComponent(SuggestionInbox.folderName), withIntermediateDirectories: true)
-        let body = """
-        <!-- Marka Çalışma Alanı tarafından oluşturuldu. Elle düzenleme uygulamaya geri yazılmaz. -->
-        # \(brand.name) — çalışma bağlamı
-
-        Bu klasör yalnızca **\(brand.name)** markasına aittir. Diğer markaların bilgisi burada yoktur ve kullanılmamalıdır.
-
-        - Ürettiğin dosyaları `ciktilar/` klasörüne kaydet. Uygulamada *Klasörden içe al* ile markanın kaynaklarına iş çıktısı olarak eklenir.
-        - Bu klasördeki araçlar (Claude Code, Codex CLI) uygulamanın veri tabanına yazamaz. Görev, çalışma kaydı, marka kaydı ve not eklemek için aşağıdaki öneri dosyasını yaz; uygulama kullanıcıya onaylatır.
-
-        \(Self.suggestionInstructions)
-
-        \(try ContextBuilder(store: store).brandContext(brandId: brandId))
-        """
-        let url = dir.appendingPathComponent("BAGLAM.md")
-        try body.write(to: url, atomically: true, encoding: .utf8)
-        writeAgentPointers(in: dir)
-        return url
-    }
-
-    /// Uygulamanın ürettiği yönlendirme dosyalarının ilk satırı: yalnızca bununla başlayan dosya yeniden yazılır.
-    public static let agentPointerMarker = "<!-- Marka Çalışma Alanı tarafından oluşturuldu: BAGLAM.md'ye yönlendirir. -->"
-
-    /// Claude Code `CLAUDE.md`'yi, Codex CLI `AGENTS.md`'yi kendiliğinden okur; BAGLAM.md'yi okumayabilir. İkisi de BAGLAM.md'ye
-    /// yönlendirilir, böylece "görev ekle" denince öneri dosyası yazılır. Kullanıcının kendi dosyası (işaretsiz) hiç değiştirilmez.
-    func writeAgentPointers(in dir: URL) {
-        let rule = "Görev, çalışma kaydı, marka kaydı ya da not eklemen istenince: `*_oner` araçların varsa (uygulama içi sohbet) onları kullan; "
-            + "yoksa (terminal) uygulamanın veri tabanına yazamazsın, BAGLAM.md'deki şemayla `oneriler/<tarih>-<konu>.json` yaz. "
-            + "Markdown görev listesi yazma. Uygulama kullanıcıya onaylatır."
-        let files = [
-            ("CLAUDE.md", "\(Self.agentPointerMarker)\n# Marka klasörü\n\n\(rule)\n\n@BAGLAM.md\n"),
-            ("AGENTS.md", "\(Self.agentPointerMarker)\n# Marka klasörü\n\nÇalışmaya başlamadan önce `BAGLAM.md` dosyasını oku (markanın bağlamı ve kuralları).\n\n\(rule)\n"),
-        ]
-        for (name, text) in files {
-            let url = dir.appendingPathComponent(name)
-            var st = stat()
-            if lstat(url.path, &st) == 0 {
-                // Bağ ya da kullanıcının kendi dosyası: dokunulmaz.
-                guard (st.st_mode & S_IFMT) == S_IFREG, let data = try? FileImportGuard.readNoFollow(url),
-                      String(decoding: data.prefix(200), as: UTF8.self).hasPrefix(Self.agentPointerMarker) else { continue }
-            }
-            try? text.write(to: url, atomically: true, encoding: .utf8)
-        }
-    }
-
-    /// BAGLAM.md'deki öneri dosyası talimatı (şema sürüm 1). Tek kaynak: testler de bu metni ayrıştırılabilir örnek için kullanır.
-    public static let suggestionInstructions = """
-    ## Yaptıklarını uygulamaya aktarma: `oneriler/` (öneri dosyası)
-
-    Oturumun sonunda ya da kullanıcı isteyince (ör. "görev ekle", "yaptıklarımızı aktar") yaptıklarını **`oneriler/<tarih>-<konu>.json`**
-    olarak yaz (ör. `oneriler/2026-09-18-web-sitesi.json`). Uygulama dosyayı okur, kullanıcıya "Terminalden N öneri · İncele" olarak
-    gösterir; kullanıcı onayladıkları bu markada oluşur ve geri alınabilir. İşlenen dosya `oneriler/islenmis/` altına taşınır.
-
-    - Bu yol terminal (Claude Code, Codex CLI) içindir. Uygulama içi sohbette `*_oner` araçların varsa onları kullan.
-    - Görev listesini markdown olarak yazma (`ciktilar/gorevler.md` gibi): uygulama onu görev olarak okumaz, yalnızca dosya olur.
-    - Marka, dosyanın bulunduğu klasörden belirlenir; dosyaya marka adı ya da kimliği yazma (yazılırsa yok sayılır).
-    - Tek dosyada birden çok tür olabilir (gün sonu dökümü). Dosya UTF-8 JSON, en fazla 256 KB ve toplam 50 öğe.
-    - Geçersiz dosya hiç öneri oluşturmaz; uygulama hatayı kullanıcıya gösterir. Düzeltip yeniden yaz (yeni içerik yeniden okunur).
-
-    Şema (`surum`: 1 zorunlu; diziler isteğe bağlı ama en az biri dolu; tarihler `YYYY-AA-GG`):
-    - `gorevler[]`: `baslik` (zorunlu, ≤200), `aciklama`, `durum` (`yapilacak` | `suruyor` | `bekliyor` | `bitti`), `sonTarih`,
-      `oncelik` (`dusuk` | `orta` | `yuksek`), `sorumlu`, `proje` (markadaki proje adı). `durum: bitti` olan ve markada aynı başlıklı
-      açık görev varsa yeni görev açılmaz, o görevin tamamlanması önerilir; belirli bir görevi tamamlamak için `gorevId` ver (yalnızca `bitti` ile).
-    - `calismaKayitlari[]` (taslak düşer, doğrulamayı kullanıcı yapar): `baslik` (zorunlu), `neIstendi`, `neYapildi` (zorunlu), `karar`,
-      `kimOnayladi`, `musteriyeBildirilen`, `tarih`, `gorev` (görev başlığı) ya da `gorevId`, `girdiDosyalari[]` ve `ciktiDosyalari[]`
-      (bu klasöre göreli yollar, ör. `ciktilar/rapor.md`; onayda kaynak olarak eklenip kayda bağlanır), `girdiKaynaklari[]` /
-      `ciktiKaynaklari[]` (aşağıdaki listedeki kaynak kimlikleri).
-    - `kayitlar[]`: `tur` (`hedef` | `talep` | `soz` | `karar` | `teklif` | `sozlesme` | `tarih`), `baslik` (zorunlu), `aciklama`, `sonTarih`.
-    - `notlar[]`: `tur` (`not` | `gorusme`), `baslik` (zorunlu), `metin` (zorunlu), `tarih`.
-
-    Örnek:
-    ```json
-    {
-      "surum": 1,
-      "gorevler": [
-        {"baslik": "Web sitesi", "aciklama": "Ana sayfa taslağı", "durum": "yapilacak", "sonTarih": "2026-09-30", "oncelik": "yuksek"},
-        {"baslik": "Katalog metinleri", "durum": "bitti"}
-      ],
-      "calismaKayitlari": [
-        {"baslik": "Marka tanımı yazıldı", "neIstendi": "Klinik için marka tanımı", "neYapildi": "Konumlandırma ve ton metni hazırlandı",
-         "gorev": "Web sitesi", "ciktiDosyalari": ["ciktilar/marka-tanimi.md"]}
-      ],
-      "kayitlar": [
-        {"tur": "soz", "baslik": "Cuma'ya kadar site taslağı gönderilecek", "sonTarih": "2026-09-26"}
-      ],
-      "notlar": [
-        {"tur": "gorusme", "baslik": "Müşteriyle ön görüşme", "metin": "Öncelik web sitesi; reklam kampanyası sonra.", "tarih": "2026-09-18"}
-      ]
-    }
-    ```
-    """
-
-    public struct FileState: Sendable, Hashable { public var modified: Date; public var size: Int }
-
-    public func snapshot(_ dir: URL) -> [String: FileState] {
-        var out: [String: FileState] = [:]
-        // /var ↔ /private/var gibi sembolik bağlar: göreli yol iki tarafta da aynı biçimden hesaplanır.
-        let base = dir.resolvingSymlinksInPath().path
-        guard let e = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey, .isSymbolicLinkKey],
-                                                     options: [.skipsHiddenFiles]) else { return out }
-        for case let url as URL in e {
-            let v0 = try? url.resourceValues(forKeys: [.isSymbolicLinkKey])
-            // Sembolik bağlar atlanır: başka markaya (ya da uygulama verisine) giden bağ marka klasörünün içeriği sayılmaz.
-            // Bağ bir klasöre işaret ediyorsa içine de inilmez.
-            if v0?.isSymbolicLink == true { e.skipDescendants(); continue }
-            guard let v = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey]), v.isDirectory != true else { continue }
-            let full = url.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(url.lastPathComponent).path
-            guard full.hasPrefix(base + "/") else { continue }
-            let rel = String(full.dropFirst(base.count + 1))
-            // Uygulamanın ürettiği bağlam/yönlendirme dosyaları klasörün içeriği sayılmaz.
-            if rel == "BAGLAM.md" || rel == "CLAUDE.md" || rel == "AGENTS.md" { continue }
-            out[rel] = FileState(modified: v.contentModificationDate ?? .distantPast, size: v.fileSize ?? 0)
-        }
-        return out
-    }
-
-    public static func diff(before: [String: FileState], after: [String: FileState]) -> [(path: String, change: String)] {
-        var changes: [(String, String)] = []
-        for (path, state) in after.sorted(by: { $0.key < $1.key }) {
-            if let old = before[path] { if old != state { changes.append((path, "modified")) } } else { changes.append((path, "added")) }
-        }
-        for path in before.keys.sorted() where after[path] == nil { changes.append((path, "deleted")) }
-        return changes
-    }
-
-    /// Klasördeki, henüz kaynak olarak eklenmemiş dosyalar (sha256 ile karşılaştırılır).
-    public func importableFiles(brandId: String) throws -> [URL] {
-        let dir = try folder(for: .brand(brandId))
-        let known = Set(try store.sources(brandId: brandId, includeArchived: true).map(\.sha256))
-        // `snapshot` sembolik bağları zaten atlar; içerik yine bağ izlemeden (O_NOFOLLOW) ve marka klasörüne hapsedilerek okunur.
-        // Öneri kutusu (`oneriler/`) iş çıktısı adayı değildir; öneri olarak ayrıca okunur.
-        return snapshot(dir).keys.sorted().filter { !$0.hasPrefix(SuggestionInbox.folderName + "/") }.compactMap { rel in
-            let url = dir.appendingPathComponent(rel)
-            guard let canonical = try? FileImportGuard.canonicalRegularFile(at: url, confineTo: dir),
-                  let data = try? FileImportGuard.readNoFollow(canonical), data.count < 50_000_000 else { return nil }
-            return known.contains(FileVault.sha256(data)) ? nil : url
-        }
-    }
-}
-
 public struct AISettings: Sendable, Hashable {
     public var anthropicModel: String
     public var anthropicEffort: String?
@@ -211,102 +9,113 @@ public struct AISettings: Sendable, Hashable {
     public var anthropicMaxTokens: Int?
     /// Varsayılan dışı API adresi (yalnızca doğrulama aracı; uygulama kullanmaz).
     public var anthropicBaseURL: URL?
+    /// Bu Mac'teki model (E-11): geri döngü adresi ve model adı. İkisi de yoksa yerel sağlayıcı ayarlanmamıştır.
+    /// Yalnız `LocalModelPreferences` doğrulayarak doldurur; MAS derlemesinde kullanılmaz.
+    public var localBaseURL: String?
+    public var localModel: String?
+    /// Yanıt uzunluğu (E-20): istem parçasını ve Anthropic `max_tokens` tavanını belirler.
+    public var responseLength: ResponseLength
     public init(anthropicModel: String = PriceTable.defaultAnthropicModel, anthropicEffort: String? = nil, codexModel: String? = nil,
-                anthropicMaxTokens: Int? = nil, anthropicBaseURL: URL? = nil) {
+                anthropicMaxTokens: Int? = nil, anthropicBaseURL: URL? = nil, localBaseURL: String? = nil, localModel: String? = nil,
+                responseLength: ResponseLength = .normal) {
         self.anthropicModel = anthropicModel; self.anthropicEffort = anthropicEffort; self.codexModel = codexModel
         self.anthropicMaxTokens = anthropicMaxTokens; self.anthropicBaseURL = anthropicBaseURL
+        self.localBaseURL = localBaseURL; self.localModel = localModel; self.responseLength = responseLength
     }
 }
 
-/// Sohbet motoru: sağlayıcı izni, bağlam, araç döngüsü, onaylar ve kalıcı geçmiş.
+/// Sohbet motoru: sağlayıcı izni, bağlam, araç yürütme, onaylar, iptal ve kalıcı geçmiş. Modelle konuşma `AIProvider`'dadır
+/// (`AnthropicProvider`, `CodexProvider`); hangi sağlayıcının çalışacağı yalnız `AIProviderRegistry`'den seçilir.
 public actor ChatEngine {
     public static let anthropicKeyAccount = "anthropic-api-key"
+    /// Yanıt saklanamadığında olaya yazılan tür (`refId`) ve açıklama (H3-03).
+    public static let unsavedReplyRef = "yanit-kaydedilemedi"
+    static var unsavedReplyDetail: String { L("Yanıt bu oturuma kaydedilemedi; oturumu yeniden açtığında görünmeyebilir. Gerekirse metni şimdi kopyala.") }
 
     let store: Store
+    #if !MAS
     /// Yalıtımsız Codex süreci: yalnızca hesap, giriş ve model listesi. Tur çalıştırmaz.
     public let codex: CodexAppServer
-    let folders: BrandFolders
     public let isolation: BrandIsolation
+    /// Yalıtımlı Codex süreçlerinin sahibi (sohbet turu + rapor/bilgi derleme süreçleri).
+    let codexProvider: CodexProvider
+    #endif
+    let folders: BrandFolders
     var settings: AISettings
-    private var approvalWaiters: [String: CheckedContinuation<ApprovalDecision, Never>] = [:]
+    let registry: AIProviderRegistry
+    private let approvals = ApprovalBroker()
     private var running: [String: Task<Void, Never>] = [:]
-    private var codexTurns: [String: (key: String, server: CodexAppServer, thread: String, turn: String)] = [:]
-    /// Kapsam başına ayrı, yalıtımlı Codex süreci (profil kapsamın klasörünü açar, diğerlerini kapatır).
-    private var codexServers: [String: CodexAppServer] = [:]
-    private var codexServerUse: [String: Date] = [:]
-    /// Sohbet turu dışında süren işler (rapor özeti, bilgi derleme: `completeJSON`). Bu süreç boştaki sayılıp durdurulmamalı.
-    private var structuredBusy: [String: Int] = [:]
-    /// Aynı anda açık tutulan yalıtımlı Codex süreci üst sınırı; en uzun süredir boştaki durdurulur.
-    static let maxCodexServers = 4
+    private var cancellations: [String: TurnCancellation] = [:]
     let anthropicKey: @Sendable () -> String?
     let urlSession: URLSession
     /// Sağlayıcı hataları buraya içeriksiz kaydedilir (tür + yer; mesaj değil).
     let diagnostics: DiagnosticsLog?
+    /// E-30: tur sonunda içeriksiz iz buraya yazılır (bellek içi, diske yazılmaz). Testler kendi tamponunu verir.
+    var turnTraces: TurnTraces = .shared
+    func useTurnTraces(_ traces: TurnTraces) { turnTraces = traces }
 
+    #if !MAS
     public init(store: Store, codex: CodexAppServer, folders: BrandFolders, workspace: URL, settings: AISettings,
                 anthropicKey: @escaping @Sendable () -> String? = { Keychain.load(account: ChatEngine.anthropicKeyAccount) },
                 urlSession: URLSession = .shared, diagnostics: DiagnosticsLog? = nil) {
+        self.init(store: store, codex: codex, folders: folders, workspace: workspace, settings: settings, anthropicKey: anthropicKey,
+                  urlSession: urlSession, diagnostics: diagnostics, providers: nil)
+    }
+
+    /// `providers` verilirse (testler) sağlayıcı kaydı yalnız bunlardan oluşur; `nil` ise Anthropic + Codex.
+    init(store: Store, codex: CodexAppServer, folders: BrandFolders, workspace: URL, settings: AISettings,
+         anthropicKey: @escaping @Sendable () -> String?, urlSession: URLSession, diagnostics: DiagnosticsLog?, providers: [any AIProvider]?) {
         self.store = store; self.codex = codex; self.folders = folders; self.settings = settings
-        self.isolation = BrandIsolation(workspace: workspace, folders: folders)
+        let isolation = BrandIsolation(workspace: workspace, folders: folders)
+        self.isolation = isolation
         self.anthropicKey = anthropicKey; self.urlSession = urlSession; self.diagnostics = diagnostics
+        let codexProvider = CodexProvider(isolation: isolation, diagnostics: diagnostics)
+        self.codexProvider = codexProvider
+        // E-11: yerel sağlayıcı yalnız doğrudan dağıtımda kayıtlı; ayarı her turda `AISettings`'ten okunur.
+        self.registry = AIProviderRegistry(providers ?? [AnthropicProvider(anthropicKey: anthropicKey, urlSession: urlSession), codexProvider,
+                                                         LocalSettingsProvider(), AppleFoundationModelsProvider()])   // E-25: Apple cihaz üstü
+    }
+    #else
+    /// MAS derlemesi: Codex süreci ve seatbelt yalıtımı yok; yalnız Anthropic.
+    public init(store: Store, folders: BrandFolders, workspace: URL, settings: AISettings,
+                anthropicKey: @escaping @Sendable () -> String? = { Keychain.load(account: ChatEngine.anthropicKeyAccount) },
+                urlSession: URLSession = .shared, diagnostics: DiagnosticsLog? = nil) {
+        self.init(store: store, folders: folders, workspace: workspace, settings: settings, anthropicKey: anthropicKey,
+                  urlSession: urlSession, diagnostics: diagnostics, providers: nil)
     }
 
-    // MARK: Yalıtımlı Codex süreçleri
-
-    static func serverKey(_ scope: SessionScope) -> String {
-        switch scope {
-        case .brand(let id): "marka:" + id
-        case .allBrands: "tum-markalar"
-        }
+    init(store: Store, folders: BrandFolders, workspace: URL, settings: AISettings,
+         anthropicKey: @escaping @Sendable () -> String?, urlSession: URLSession, diagnostics: DiagnosticsLog?, providers: [any AIProvider]?) {
+        self.store = store; self.folders = folders; self.settings = settings
+        self.anthropicKey = anthropicKey; self.urlSession = urlSession; self.diagnostics = diagnostics
+        self.registry = AIProviderRegistry(providers ?? [AnthropicProvider(anthropicKey: anthropicKey, urlSession: urlSession),
+                                                         AppleFoundationModelsProvider()])   // E-25: MAS'ta da (ağ/süreç yok)
     }
+    #endif
+
+    #if !MAS
+    // MARK: Yalıtımlı Codex süreçleri (CodexProvider'a iletilir)
 
     /// Kapsamın yalıtımlı Codex süreci; gerekirse başlatılır. Profil başlatma anında üretilir ve ölçülerek doğrulanır.
     public func codexServer(for scope: SessionScope) async throws -> CodexAppServer {
-        let key = Self.serverKey(scope)
-        let server: CodexAppServer
-        if let existing = codexServers[key] {
-            server = existing
-        } else {
-            let isolation = isolation
-            server = CodexAppServer(isolation: { binary in try isolation.codexIsolation(scope: scope, codexBinary: binary) })
-            codexServers[key] = server
-        }
-        codexServerUse[key] = Date()
-        await evictIdleServers(keeping: key)
-        try await server.start()
-        return server
+        try await codexProvider.codexServer(for: scope)
     }
 
     /// Yapılandırılmış iş (rapor özeti/bilgi derleme) süresince kapsamın Codex sürecini alır ve "meşgul" işaretler; iş bitince
     /// `releaseCodexServer` çağrılmalı (boştaki süreç durdurma bu süreci öldürmesin). Süren derleme turu böyle korunur.
     public func retainCodexServer(for scope: SessionScope) async throws -> CodexAppServer {
-        let server = try await codexServer(for: scope)
-        structuredBusy[Self.serverKey(scope), default: 0] += 1
-        return server
+        try await codexProvider.retainCodexServer(for: scope)
     }
 
-    public func releaseCodexServer(for scope: SessionScope) {
-        let key = Self.serverKey(scope)
-        if let n = structuredBusy[key], n > 1 { structuredBusy[key] = n - 1 } else { structuredBusy[key] = nil }
-    }
-
-    private func evictIdleServers(keeping key: String) async {
-        let busy = Set(codexTurns.values.map(\.key)).union(structuredBusy.keys).union([key])
-        while codexServers.count > Self.maxCodexServers,
-              let victim = codexServerUse.filter({ !busy.contains($0.key) }).min(by: { $0.value < $1.value })?.key {
-            let s = codexServers.removeValue(forKey: victim)
-            codexServerUse[victim] = nil
-            await s?.stop()
-        }
+    public func releaseCodexServer(for scope: SessionScope) async {
+        await codexProvider.releaseCodexServer(for: scope)
     }
 
     /// Tüm yalıtımlı Codex süreçlerini durdurur (çıkış yapıldığında ya da çalışma alanı kapanırken).
     public func stopCodexServers() async {
-        let all = codexServers
-        codexServers.removeAll()
-        codexServerUse.removeAll()
-        for (_, s) in all { await s.stop() }
+        await codexProvider.stopCodexServers()
     }
+    #endif
 
     public func update(settings: AISettings) { self.settings = settings }
 
@@ -319,7 +128,9 @@ public actor ChatEngine {
         }
     }
 
-    public func messages(sessionId: String) throws -> [AIMessage] {
+    public func messages(sessionId: String) throws -> [AIMessage] { try Self.messages(store: store, sessionId: sessionId) }
+
+    static func messages(store: Store, sessionId: String) throws -> [AIMessage] {
         try store.read { db in try AIMessage.filter(Column("sessionId") == sessionId).order(Column("createdAt")).fetchAll(db) }
     }
 
@@ -335,12 +146,29 @@ public actor ChatEngine {
         }
     }
 
-    public func createSession(scope: SessionScope, provider: AIProviderKind, title: String) throws -> AISession {
+    /// `memberId` verilirse oturum o yapay zekâ çalışanın rolüyle çalışır. Yalnız marka kapsamında; çalışan etkin, yapay zekâ türünde
+    /// ve bu markaya atanmış olmalıdır (başka markanın ekibi seçilemez).
+    public func createSession(scope: SessionScope, provider: AIProviderKind, title: String, memberId: String? = nil) throws -> AISession {
+        // MAS derlemesinde Codex oluşturulamaz (doğrudan dağıtımda her sağlayıcı seçilebilir; bu denetim orada hep geçer).
+        guard provider.isSelectable else { throw MarkaError.ai(L("Bu sağlayıcı bu sürümde kullanılamaz.")) }
         _ = try allowedBrandIds(scope: scope, provider: provider)
-        let model = provider == .anthropic ? settings.anthropicModel : (settings.codexModel ?? "codex")
+        #if !MAS
+        if provider == .local { _ = try LocalSettingsProvider.config(settings) }   // E-11: ayarsız yerel oturum açılmaz
+        #endif
+        // E-25: Apple modeli kullanılamıyorsa (macOS 26 yok, Apple Intelligence kapalı…) oturum açılmaz; neden söylenir.
+        if let apple = (try? registry.provider(for: provider)) as? AppleFoundationModelsProvider { try apple.requireAvailable() }
+        if let memberId {
+            guard case .brand(let brandId) = scope else { throw MarkaError.validation(L("Çalışan rolü yalnız tek marka sohbetinde kullanılır.")) }
+            _ = try ContextBuilder(store: store).persona(memberId: memberId, brandId: brandId)
+            // Görev tarifi ve yetenekler şirket verisidir: Stüdyo bu sağlayıcıya izin vermiyorsa rol açılmaz (B1/O1).
+            guard ContextBuilder(store: store).companyDataAllowed(brandId: brandId, provider: provider) else {
+                throw MarkaError.validation(L("Çalışan rolü şirket verisi taşır; Stüdyo'nun AI izni bu sağlayıcıyı içermiyor."))
+            }
+        }
+        let model = try registry.provider(for: provider).sessionModel(settings: settings)
         let s: AISession
         switch scope {
-        case .brand(let id): s = AISession(brandId: id, scope: .brand, provider: provider, model: model, title: title)
+        case .brand(let id): s = AISession(brandId: id, scope: .brand, provider: provider, model: model, title: title, memberId: memberId)
         case .allBrands: s = AISession(brandId: nil, scope: .allBrands, provider: provider, model: model, title: title)
         }
         try store.write { db in try s.insert(db) }
@@ -348,12 +176,15 @@ public actor ChatEngine {
     }
 
     public func respond(approvalId: String, decision: ApprovalDecision) {
-        approvalWaiters.removeValue(forKey: approvalId)?.resume(returning: decision)
+        approvals.resolve(id: approvalId, decision: decision)
     }
 
+    /// Süren turu durdurur: görev iptal edilir, tur işaretlenir (yeni model isteği ve yeni araç çağrısı olmaz) ve sağlayıcı
+    /// kendi tarafında durdurulur (Codex `turn/interrupt`).
     public func cancel(sessionId: String) async {
         running[sessionId]?.cancel()
-        if let t = codexTurns[sessionId] { try? await t.server.interrupt(threadId: t.thread, turnId: t.turn) }
+        cancellations[sessionId]?.cancel()
+        for provider in registry.all { await provider.cancel(sessionId: sessionId) }
     }
 
     public func isRunning(sessionId: String) -> Bool { running[sessionId] != nil }
@@ -367,9 +198,11 @@ public actor ChatEngine {
                 c.finish()
             }
         }
+        let cancellation = TurnCancellation()
+        cancellations[sessionId] = cancellation
         return AsyncStream { continuation in
             let task = Task {
-                await self.runTurn(sessionId: sessionId, text: text, emit: { continuation.yield($0) })
+                await self.runTurn(sessionId: sessionId, text: text, cancellation: cancellation, emit: { continuation.yield($0) })
                 continuation.finish()
                 self.finishRun(sessionId)
             }
@@ -380,19 +213,25 @@ public actor ChatEngine {
 
     private func finishRun(_ sessionId: String) {
         running[sessionId] = nil
-        codexTurns[sessionId] = nil
+        cancellations[sessionId] = nil
     }
 
-    private func runTurn(sessionId: String, text: String, emit: @escaping @Sendable (AIEvent) -> Void) async {
+    private func runTurn(sessionId: String, text: String, cancellation: TurnCancellation, emit: @escaping @Sendable (AIEvent) -> Void) async {
         let clean = text.trimmed
         guard !clean.isEmpty else { return }
         var assistant = AIMessage(sessionId: sessionId, role: .assistant, text: "", state: .partial)
         var events: [ChatEventRecord] = []
         let recorder = EventRecorder()
         var context = "ai.oturum.akis"
+        var providerKind: AIProviderKind?
+        // E-30: içeriksiz tur izi (süre, araç adı sayacı, belirteç, sonuç türü).
+        let traceStart = ContinuousClock.now
+        let traceCollector = TurnTraceCollector()
+        var outcome = TurnOutcome.tamam
         do {
             guard let session = try store.read({ db in try AISession.fetchOne(db, key: sessionId) }) else { throw MarkaError.notFound(sessionId) }
             context = "ai.\(session.provider.rawValue).akis"
+            providerKind = session.provider
             let scope = SessionScope(session: session)
             let allowed = try allowedBrandIds(scope: scope, provider: session.provider)
             let userMessage = AIMessage(sessionId: sessionId, role: .user, text: clean)
@@ -406,371 +245,169 @@ public actor ChatEngine {
             assistant.createdAt = Date().addingTimeInterval(0.001)
             let wrappedEmit: @Sendable (AIEvent) -> Void = { event in
                 recorder.record(event)
+                traceCollector.observe(event)
                 emit(event)
             }
-            switch session.provider {
-            case .anthropic:
-                try await runAnthropic(session: session, scope: scope, allowed: allowed, assistant: &assistant, emit: wrappedEmit)
-            case .codex:
-                try await runCodex(session: session, scope: scope, allowed: allowed, text: clean, assistant: &assistant, emit: wrappedEmit)
-            }
+            // Kayıtlı olmayan sağlayıcı (ör. MAS derlemesinde eski veri tabanından gelen Codex oturumu) burada reddedilir.
+            let provider = try registry.provider(for: session.provider)
+            var turn = makeTurn(session: session, scope: scope, allowed: allowed, text: clean, provider: provider,
+                                cancellation: cancellation, emit: wrappedEmit)
+            let runTool = turn.callTool
+            turn.callTool = { name, input in traceCollector.tool(name); return await runTool(name, input) }   // E-30: yalnız ad
+            try await provider.runTurn(turn, assistant: &assistant)
             assistant.state = Task.isCancelled ? .partial : .complete
+            if Task.isCancelled { outcome = .durduruldu }
         } catch is CancellationError {
+            outcome = .durduruldu
             assistant.state = .partial
             emit(.event(ChatEventRecord(kind: .notice, title: L("Durduruldu"), detail: L("Yanıt yarıda kesildi; öneriler uygulanmadı."))))
         } catch {
             assistant.state = assistant.text.isEmpty ? .failed : .partial
-            diagnostics?.record(error, context: context)
-            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            let record = ChatEventRecord(kind: .error, title: L("Hata"), detail: message, status: "error")
+            // H3-04: hata türe eşlenir; kullanıcı yalnız türün güvenli mesajını görür (ham gövde/anahtar yok). Tür olayın
+            // `refId`'sinde taşınır (panel "Tekrar dene"/"Ayarlar'ı aç" kararını buradan verir). Sınıflandırılmış sağlayıcı
+            // hatasında tanı günlüğüne yalnız tür yazılır.
+            let failure = AIFailure(error: error, provider: providerKind)
+            outcome = .hata(failure.kind)
+            diagnostics?.record(error is AIServiceError ? failure.kind : error, context: context)
+            let message = failure.message
+            let record = ChatEventRecord(kind: .error, title: L("Hata"), detail: message, status: "error", refId: failure.kind.rawValue)
             emit(.event(record))
             emit(.failed(message))
             recorder.record(.event(record))
         }
         events = recorder.events()
+        let traceDuration = ContinuousClock.now - traceStart
+        turnTraces.record(traceCollector.trace(
+            provider: providerKind, durationMs: Int(traceDuration.components.seconds * 1000 + traceDuration.components.attoseconds / 1_000_000_000_000_000),
+            proposalCount: events.filter { $0.kind == .proposal }.count, outcome: outcome))
         assistant.eventsJSON = Store.json(events) ?? "[]"
         if assistant.state != .complete { assistant.rawJSON = "" }
         let final = assistant
-        try? store.write { db in try final.insert(db) }
+        do { try store.write { db in try final.insert(db) } } catch {
+            // Yanıt ekranda kalır ama saklanamadı: kullanıcı görsün (oturum yeniden açılınca yanıt olmaz). Kayda yalnız tür.
+            diagnostics?.record(error, context: "ai.yanit.kaydet")
+            emit(.event(ChatEventRecord(kind: .error, title: L("Yanıt kaydedilemedi"), detail: Self.unsavedReplyDetail,
+                                        status: "error", refId: Self.unsavedReplyRef)))
+        }
         emit(.finished(stopReason: final.state.rawValue))
     }
 
-    // MARK: Anthropic
+    /// Sağlayıcıya verilecek tur. Araç yürütücü marka kimliğini ve kapsamı denetler (başka markanın kimliği reddedilir); araç
+    /// yalnız sağlayıcıya sunulduysa (yetenek) ve tur durdurulmadıysa çalışır. Araçlar veri yazmaz, öneri üretir.
+    private func makeTurn(session: AISession, scope: SessionScope, allowed: Set<String>, text: String, provider: any AIProvider,
+                          cancellation: TurnCancellation, emit: @escaping @Sendable (AIEvent) -> Void) -> AITurn {
+        let tools = provider.capabilities.supportsTools ? ToolCatalog.tools(for: scope, store: store) : []
+        let toolsOffered = provider.capabilities.supportsTools
+        let executor = ToolExecutor(store: store, scope: scope, sessionId: session.id, allowedBrandIds: allowed)
+        let callTool: @Sendable (String, JSONValue) async -> ToolResult = { name, input in
+            if cancellation.isCancelled {
+                return ToolResult(text: "HATA: kullanıcı yanıtı durdurdu; araç çalıştırılmadı.", isError: true,
+                                  event: ChatEventRecord(kind: .notice, title: L("Durduruldu"), detail: L("Yanıt yarıda kesildi; öneriler uygulanmadı.")))
+            }
+            // Araç desteği olmayan sağlayıcıya araç verilmedi; yine de gelen çağrı çalıştırılmaz.
+            guard toolsOffered else {
+                return ToolResult(text: "HATA: bu sağlayıcıyla araç kullanılamaz; araç çalıştırılmadı.", isError: true,
+                                  event: ChatEventRecord(kind: .error, title: L("Hata"), detail: name, status: "error"))
+            }
+            return executor.run(name: name, input: input)
+        }
+        return AITurn(session: session, scope: scope, allowedBrandIds: allowed, text: text, settings: settings, tools: tools,
+                      store: store, folders: folders, approvals: approvals, cancellation: cancellation, emit: emit, callTool: callTool)
+    }
 
+    /// Anthropic geçmişi (testler ve doğrulama aracı için; asıl kurucu `AnthropicProvider.history`).
     func history(sessionId: String, excludingLastUser: Bool) throws -> [JSONValue] {
-        var msgs = try messages(sessionId: sessionId)
-        if excludingLastUser, msgs.last?.role == .user { msgs.removeLast() }
-        var out: [JSONValue] = []
-        for m in msgs {
-            switch m.role {
-            case .user:
-                out.append(["role": "user", "content": [["type": "text", "text": .string(m.text)]]])
-            case .assistant:
-                if m.state == .complete, !m.rawJSON.isEmpty, let arr = try? JSONValue.parse(m.rawJSON).array, !arr.isEmpty {
-                    out.append(contentsOf: arr)
-                } else if !m.text.isEmpty {
-                    out.append(["role": "assistant", "content": [["type": "text", "text": .string(m.text)]]])
-                }
-            }
-        }
-        return out
-    }
-
-    private func runAnthropic(session: AISession, scope: SessionScope, allowed: Set<String>, assistant: inout AIMessage,
-                              emit: @escaping @Sendable (AIEvent) -> Void) async throws {
-        guard let key = anthropicKey(), !key.isEmpty else {
-            throw MarkaError.ai(L("Claude API anahtarı eklenmemiş. Ayarlar › Genel bölümünden ekleyebilirsin."))
-        }
-        var client = AnthropicClient(apiKey: key, model: session.model, effort: settings.anthropicEffort,
-                                     maxTokensCap: settings.anthropicMaxTokens, session: urlSession)
-        if let url = settings.anthropicBaseURL { client.baseURL = url }
-        let system = try ContextBuilder(store: store).systemPrompt(scope: scope, allowedBrandIds: allowed)
-        var messages = try history(sessionId: session.id, excludingLastUser: false)
-        let tools = ToolCatalog.tools(for: scope)
-        let executor = ToolExecutor(store: store, scope: scope, sessionId: session.id, allowedBrandIds: allowed)
-        var turnRaw: [JSONValue] = []
-        var fullText = ""
-        let textBox = TextBox()
-        for iteration in 0..<16 {
-            try Task.checkCancellation()
-            if iteration > 0, !fullText.isEmpty, !fullText.hasSuffix("\n") {
-                fullText += "\n\n"
-                emit(.textDelta("\n\n"))
-            }
-            let result = try await client.streamTurn(system: system, messages: messages, tools: tools) { piece in
-                textBox.append(piece)
-                emit(.textDelta(piece))
-            }
-            fullText += textBox.drain()
-            assistant.text = fullText
-            let cost = PriceTable.costMicros(model: result.model, input: result.inputTokens, output: result.outputTokens,
-                                             cacheRead: result.cacheReadTokens, cacheWrite: result.cacheWriteTokens)
-            let usage = UsageEntry(provider: .anthropic, model: result.model, sessionId: session.id, brandId: session.brandId, purpose: "chat",
-                                   inputTokens: result.inputTokens, outputTokens: result.outputTokens,
-                                   cacheReadTokens: result.cacheReadTokens, cacheWriteTokens: result.cacheWriteTokens, costMicros: cost)
-            try store.write { db in try usage.insert(db) }
-            assistant.inputTokens += result.inputTokens + result.cacheReadTokens + result.cacheWriteTokens
-            assistant.outputTokens += result.outputTokens
-            assistant.costMicros += cost ?? 0
-            emit(.usage(usage))
-
-            var content = result.content
-            if result.stopReason != "tool_use", content.contains(where: { $0["type"]?.string == "tool_use" }) {
-                // Yarım kalan araç çağrısı sonucu olmadan geçmişe girerse oturum bozulur; çıkarılır.
-                content.removeAll { $0["type"]?.string == "tool_use" }
-                if content.isEmpty { content = [["type": "text", "text": .string(L("(yanıt kesildi)"))]] }
-                emit(.event(ChatEventRecord(kind: .notice, title: L("Yarım kalan araç çağrısı atlandı"))))
-            }
-            let assistantMsg: JSONValue = ["role": "assistant", "content": .array(content)]
-            messages.append(assistantMsg)
-            turnRaw.append(assistantMsg)
-
-            if result.stopReason == "refusal" {
-                emit(.event(ChatEventRecord(kind: .notice, title: L("Model isteği reddetti"), detail: L("Claude güvenlik sınıflandırıcısı bu isteği yanıtlamadı."))))
-                break
-            }
-            if result.stopReason == "max_tokens" {
-                emit(.event(ChatEventRecord(kind: .notice, title: L("Yanıt uzunluk sınırına ulaştı"), detail: L("Devam etmesini isteyebilirsin."))))
-            }
-            let toolUses = result.content.filter { $0["type"]?.string == "tool_use" }
-            guard result.stopReason == "tool_use", !toolUses.isEmpty else { break }
-            var toolResults: [JSONValue] = []
-            for use in toolUses {
-                let name = use["name"]?.string ?? ""
-                let id = use["id"]?.string ?? ""
-                let input = use["input"] ?? .object([:])
-                let r: ToolResult
-                if input["_gecersiz_json"] != nil {
-                    r = ToolResult(text: "HATA: araç girdisi geçerli JSON değil; tekrar dene.", isError: true,
-                                   event: ChatEventRecord(kind: .error, title: LF("Araç girdisi okunamadı: %@", name), status: "error"))
-                } else {
-                    r = executor.run(name: name, input: input)
-                }
-                emit(.event(r.event))
-                toolResults.append(["type": "tool_result", "tool_use_id": .string(id), "content": .string(r.text), "is_error": .bool(r.isError)])
-            }
-            let resultMsg: JSONValue = ["role": "user", "content": .array(toolResults)]
-            messages.append(resultMsg)
-            turnRaw.append(resultMsg)
-        }
-        // Sonu araç sonucu olan tur geçmişte tutarlı kalsın diye kaydedilir; bir sonraki kullanıcı mesajı birleşir.
-        assistant.rawJSON = JSONValue.array(turnRaw).compactString()
-    }
-
-    // MARK: Codex
-
-    private func runCodex(session: AISession, scope: SessionScope, allowed: Set<String>, text: String, assistant: inout AIMessage,
-                          emit: @escaping @Sendable (AIEvent) -> Void) async throws {
-        let codex = try await codexServer(for: scope)
-        if try await codex.account() == nil {
-            // Süreç girişten önce başlamış olabilir; giriş dosyası yeniden okunsun diye bir kez yeniden başlatılır.
-            await codex.stop()
-            try await codex.start()
-            guard try await codex.account() != nil else {
-                throw MarkaError.ai(L("Codex'e giriş yapılmamış. Ayarlar › AI bölümünden ChatGPT ile giriş yap."))
-            }
-        }
-        let cwd = try folders.folder(for: scope)
-        if case .brand(let b) = scope { try folders.writeContextFile(brandId: b) }
-        let instructions = try ContextBuilder(store: store).systemPrompt(scope: scope, allowedBrandIds: allowed) + """
-
-        # Codex çalışma kuralları
-        - Çalışma klasörün: \(cwd.path). Yalnızca bu klasörde dosya oluştur veya değiştir; çıktıları `ciktilar/` altına koy.
-        - Diğer marka klasörleri ve uygulama verisi işletim sistemi düzeyinde kapalıdır; bu klasör dışına yazma reddedilir. Reddedilen işlemi başka yoldan deneme.
-        - Uygulama verisini değiştirmek için yalnızca sana verilen *_oner araçlarını kullan.
-        """
-        let executor = ToolExecutor(store: store, scope: scope, sessionId: session.id, allowedBrandIds: allowed)
-        var threadId = session.providerThreadId
-        if let existing = threadId, await codex.needsResume(existing) {
-            do {
-                try await codex.resumeThread(existing, cwd: cwd, developerInstructions: instructions)
-            } catch {
-                // Kayıt kapsamın Codex dizininde yok (ör. 0.1.0'da ortak ~/.codex'te açılmış iş parçacığı): yenisi açılır.
-                // Uygulamadaki sohbet geçmişi korunur; Codex önceki turları hatırlamaz.
-                threadId = nil
-                emit(.event(ChatEventRecord(kind: .notice, title: L("Codex oturumu yeniden başlatıldı"),
-                                            detail: L("Önceki Codex kaydı bu markanın yalıtımlı alanında bulunamadı; Codex önceki mesajları hatırlamayabilir."))))
-            }
-        }
-        if threadId == nil {
-            var model = settings.codexModel
-            if model == nil { model = try await codex.models().first(where: \.isDefault)?.id }
-            guard let model else { throw MarkaError.ai(L("Codex model listesi alınamadı.")) }
-            let id = try await codex.startThread(cwd: cwd, model: model, developerInstructions: instructions, tools: ToolCatalog.tools(for: scope))
-            threadId = id
-            try store.write { db in
-                var s = session
-                s.providerThreadId = id
-                s.model = model
-                try s.update(db)
-            }
-        }
-        let thread = threadId!
-        let before = folders.snapshot(cwd)
-        let collector = CodexTurnState()
-        await codex.register(threadId: thread, notifications: { note in
-            await collector.handle(note, emit: emit)
-        }, requests: { [weak self] method, params in
-            guard let self else { return ["decision": "decline"] }
-            return await self.handleCodexRequest(method: method, params: params, executor: executor, emit: emit)
-        })
-        defer { Task { await codex.unregister(threadId: thread) } }
-        let turnId = try await codex.startTurn(threadId: thread, text: text)
-        codexTurns[session.id] = (Self.serverKey(scope), codex, thread, turnId)
-        let outcome = await collector.waitForCompletion()
-        assistant.text = outcome.text
-        assistant.inputTokens = outcome.inputTokens
-        assistant.outputTokens = outcome.outputTokens
-        if outcome.inputTokens > 0 || outcome.outputTokens > 0 {
-            let usage = UsageEntry(provider: .codex, model: session.model, sessionId: session.id, brandId: session.brandId, purpose: "chat",
-                                   inputTokens: outcome.inputTokens, outputTokens: outcome.outputTokens, cacheReadTokens: outcome.cachedTokens, costMicros: nil)
-            try store.write { db in try usage.insert(db) }
-            emit(.usage(usage))
-        }
-        for change in BrandFolders.diff(before: before, after: folders.snapshot(cwd)) {
-            emit(.event(ChatEventRecord(kind: .fileChange, title: change.path, detail: cwd.appendingPathComponent(change.path).path,
-                                        status: change.change, refId: change.path)))
-        }
-        if outcome.status == "failed" { throw MarkaError.ai(outcome.error ?? L("Codex turu başarısız oldu.")) }
-        if outcome.status == "interrupted" { throw CancellationError() }
-    }
-
-    private func handleCodexRequest(method: String, params: JSONValue, executor: ToolExecutor, emit: @escaping @Sendable (AIEvent) -> Void) async -> JSONValue {
-        switch method {
-        case "item/tool/call":
-            let r = executor.run(name: params["tool"]?.string ?? "", input: params["arguments"] ?? .object([:]))
-            emit(.event(r.event))
-            return ["success": .bool(!r.isError), "contentItems": [["type": "inputText", "text": .string(r.text)]]]
-        case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
-            let isCommand = method.contains("command")
-            let request = ApprovalRequest(
-                id: newID(), kind: isCommand ? .command : .fileChange,
-                title: isCommand ? L("Komut çalıştırma izni") : L("Dosya değişikliği izni"),
-                detail: isCommand ? (params["command"]?.string ?? "") : (params["grantRoot"]?.string ?? L("Çalışma klasöründe dosya değişikliği")),
-                reason: params["reason"]?.string ?? "")
-            emit(.event(ChatEventRecord(id: request.id, kind: .approval, title: request.title, detail: request.detail, status: "pending")))
-            let decision = await withCheckedContinuation { c in
-                approvalWaiters[request.id] = c
-                emit(.approvalNeeded(request))
-            }
-            emit(.eventUpdated(ChatEventRecord(id: request.id, kind: .approval, title: request.title, detail: request.detail, status: decision.rawValue)))
-            return ["decision": .string(decision.rawValue)]
-        default:
-            return ["decision": "decline"]
-        }
+        AnthropicProvider.history(try messages(sessionId: sessionId), excludingLastUser: excludingLastUser)
     }
 }
 
-extension AIProviderKind {
-    public var displayName: String {
-        switch self {
-        case .anthropic: "Anthropic (Claude API)"
-        case .codex: "OpenAI Codex"
+#if !MAS
+// MARK: - Bu Mac'teki model (E-11)
+
+/// Kayıttaki yerel sağlayıcı. Adres ve model adını her turda `AISettings`'ten okur ve `LocalEndpointProvider`'a (E-03) devreder:
+/// yalnız geri döngü, araçsız, sunucu başlatmaz. Marka × sağlayıcı izni ChatEngine'de denetlenir (varsayılan kapalı).
+struct LocalSettingsProvider: AIProvider {
+    let kind = AIProviderKind.local
+    let capabilities = AIProviderCapabilities(supportsTools: false, contextTokens: nil, onDevice: true, needsAPIKey: false)
+    var urlSession: URLSession = LocalEndpointProvider.makeSession()
+
+    /// Ayardan uç nokta yapılandırması; ayar yoksa ya da adres geri döngü değilse hata (istek gönderilmez).
+    static func config(_ settings: AISettings) throws -> LocalEndpointConfig {
+        guard let base = settings.localBaseURL, let model = settings.localModel else {
+            throw MarkaError.ai(L("Bu Mac'teki model ayarlanmadı. Ayarlar › Genel'den adres ve model adı gir."))
+        }
+        return try LocalEndpointConfig(baseURL: base, format: .openAICompatible, model: model, isEnabled: true)
+    }
+
+    func sessionModel(settings: AISettings) -> String { settings.localModel ?? "" }
+    func cancel(sessionId: String) async {}
+
+    func runTurn(_ turn: AITurn, assistant: inout AIMessage) async throws {
+        let provider = LocalEndpointProvider(config: try Self.config(turn.settings), kind: kind, urlSession: urlSession)
+        try await provider.runTurn(turn, assistant: &assistant)
+    }
+}
+
+/// Bu Mac'teki model tercihleri (`PreferenceStore` üzerinden; `UserDefaults.standard` kullanılmaz).
+/// Geri döngü dışı adres ya da boş model adı hiç yazılmaz; okurken de yeniden denetlenir.
+public enum LocalModelPreferences {
+    static let addressKey = "localModelAddress"
+    static let modelKey = "localModelName"
+
+    public struct Value: Sendable, Equatable {
+        public var address: String
+        public var model: String
+    }
+
+    /// Kayıtlı ve hâlâ geçerli ayar; yoksa ya da kayıt bozuksa `nil`.
+    public static func load(_ preferences: PreferenceStore) -> Value? {
+        guard let address = preferences.string(forKey: addressKey), let model = preferences.string(forKey: modelKey),
+              let config = try? LocalEndpointConfig(baseURL: address, format: .openAICompatible, model: model) else { return nil }
+        return Value(address: config.baseURL.absoluteString, model: config.model)
+    }
+
+    /// Doğrular ve yazar. Doğrulama başarısızsa hiçbir anahtara dokunmadan hata fırlatır.
+    @discardableResult
+    public static func save(address: String, model: String, to preferences: PreferenceStore) throws -> Value {
+        let config = try LocalEndpointConfig(baseURL: address, format: .openAICompatible, model: model)
+        let value = Value(address: config.baseURL.absoluteString, model: config.model)
+        preferences.set(value.address, forKey: addressKey)
+        preferences.set(value.model, forKey: modelKey)
+        return value
+    }
+
+    public static func clear(_ preferences: PreferenceStore) {
+        preferences.set(nil, forKey: addressKey)
+        preferences.set(nil, forKey: modelKey)
+    }
+
+    /// "Bağlantıyı dene": `GET <adres>/v1/models` (içerik göndermez). Yalnız geri döngü; yönlendirme izlenmez.
+    /// Sunucu yanıt verirse döner, vermezse hata fırlatır. Sunucuyu başlatmaz.
+    public static func testConnection(address: String) async throws {
+        try await testConnection(address: address, urlSession: LocalEndpointProvider.makeSession())
+    }
+
+    static func testConnection(address: String, urlSession: URLSession) async throws {
+        let base = try LocalEndpointConfig.validatedLoopbackURL(address)
+        let v1 = base.path.hasSuffix("/v1") || base.path.hasSuffix("/v1/") ? base : base.appending(path: "v1")
+        let url = v1.appending(path: "models")
+        guard LocalEndpointConfig.isLoopback(url) else {
+            throw MarkaError.validation(L("Yerel model adresi yalnız bu Mac olabilir (127.0.0.1, ::1 ya da localhost)."))
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        let response: URLResponse
+        do {
+            (_, response) = try await urlSession.data(for: request, delegate: RedirectRefuser())
+        } catch {
+            throw MarkaError.ai(L("Bu Mac'teki model sunucusuna bağlanılamadı. Sunucunun çalıştığını ve adresi denetle."))
+        }
+        guard let http = response as? HTTPURLResponse, let finalURL = http.url, LocalEndpointConfig.isLoopback(finalURL) else {
+            throw MarkaError.ai(L("Yerel model sunucusu bu Mac dışına yönlendirdi; istek durduruldu."))
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw MarkaError.ai(LF("Yerel model sunucusu yanıt vermedi. HTTP durumu: %d", http.statusCode))
         }
     }
 }
-
-extension ContextBuilder {
-    func systemPrompt(scope: SessionScope, allowedBrandIds: Set<String>) throws -> String {
-        switch scope {
-        case .brand: return try systemPrompt(scope: scope)
-        case .allBrands:
-            var s = try systemPrompt(scope: .brand("__none__"), skipBrand: true)
-            s += "\n# Kapsam: TÜM MARKALAR (kullanıcı açıkça seçti)\nÖneri araçları yok; yalnızca okuma. Her cümlede hangi markadan söz ettiğini belirt, bilgileri karıştırma.\n"
-            for b in try store.brands() where allowedBrandIds.contains(b.id) {
-                let open = try store.tasks(brandId: b.id).filter(\.status.isOpen).count
-                s += "- \(b.name) (açık görev: \(open)) id=\(b.id)\n"
-            }
-            let excluded = try store.brands().filter { !allowedBrandIds.contains($0.id) }.count
-            if excluded > 0 { s += "\nNot: \(excluded) marka bu sağlayıcıya izin vermediği için kapsam dışı.\n" }
-            return s
-        }
-    }
-
-    func systemPrompt(scope: SessionScope, skipBrand: Bool) throws -> String {
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "tr_TR")
-        fmt.dateFormat = "d MMMM yyyy EEEE"
-        return Self.baseInstructions + "\n\nBugün: \(fmt.string(from: Date())) (\(DayString.from(Date())))\n"
-    }
-}
-
-final class TextBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var buffer = ""
-    func append(_ s: String) { lock.lock(); buffer += s; lock.unlock() }
-    func drain() -> String { lock.lock(); defer { buffer = ""; lock.unlock() }; return buffer }
-}
-
-/// Olayları gönderim sırasıyla, eşzamanlı kaydeder.
-final class EventRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var list: [ChatEventRecord] = []
-    func record(_ event: AIEvent) {
-        lock.lock(); defer { lock.unlock() }
-        switch event {
-        case .event(let e): list.append(e)
-        case .eventUpdated(let e):
-            if let i = list.firstIndex(where: { $0.id == e.id }) { list[i] = e } else { list.append(e) }
-        default: break
-        }
-    }
-    func events() -> [ChatEventRecord] { lock.lock(); defer { lock.unlock() }; return list }
-}
-
-actor CodexTurnState {
-    struct Outcome: Sendable {
-        var text: String
-        var status: String
-        var error: String?
-        var inputTokens: Int
-        var outputTokens: Int
-        var cachedTokens: Int
-    }
-    private var messages: [String: String] = [:]
-    private var order: [String] = []
-    private var outcome = Outcome(text: "", status: "inProgress", inputTokens: 0, outputTokens: 0, cachedTokens: 0)
-    private var done = false
-    private var waiters: [CheckedContinuation<Outcome, Never>] = []
-
-    func handle(_ note: JSONValue, emit: @Sendable (AIEvent) -> Void) {
-        let method = note["method"]?.string ?? ""
-        let p = note["params"] ?? .null
-        switch method {
-        case "item/agentMessage/delta":
-            let id = p["itemId"]?.string ?? ""
-            if messages[id] == nil {
-                if !order.isEmpty { emit(.textDelta("\n\n")) }
-                order.append(id)
-            }
-            let d = p["delta"]?.string ?? ""
-            messages[id, default: ""] += d
-            emit(.textDelta(d))
-        case "item/started":
-            let item = p["item"] ?? .null
-            switch item["type"]?.string {
-            case "commandExecution":
-                emit(.event(ChatEventRecord(id: item["id"]?.string ?? newID(), kind: .command, title: L("Komut"),
-                                            detail: item["command"]?.string ?? "", status: "running")))
-            case "fileChange":
-                let paths = (item["changes"]?.array ?? []).compactMap { $0["path"]?.string }.joined(separator: ", ")
-                emit(.event(ChatEventRecord(id: item["id"]?.string ?? newID(), kind: .fileChange, title: L("Dosya değişikliği"), detail: paths, status: "running")))
-            default: break
-            }
-        case "item/completed":
-            let item = p["item"] ?? .null
-            switch item["type"]?.string {
-            case "agentMessage":
-                let id = item["id"]?.string ?? ""
-                if messages[id] == nil { order.append(id) }
-                messages[id] = item["text"]?.string ?? messages[id]
-            case "commandExecution":
-                emit(.eventUpdated(ChatEventRecord(id: item["id"]?.string ?? newID(), kind: .command, title: L("Komut"),
-                                                   detail: item["command"]?.string ?? "", status: item["status"]?.string ?? "completed")))
-            case "fileChange":
-                let paths = (item["changes"]?.array ?? []).compactMap { $0["path"]?.string }.joined(separator: ", ")
-                emit(.eventUpdated(ChatEventRecord(id: item["id"]?.string ?? newID(), kind: .fileChange, title: L("Dosya değişikliği"),
-                                                   detail: paths, status: item["status"]?.string ?? "completed")))
-            default: break
-            }
-        case "thread/tokenUsage/updated":
-            let last = p["tokenUsage"]?["last"] ?? .null
-            outcome.inputTokens += last["inputTokens"]?.int ?? 0
-            outcome.outputTokens += last["outputTokens"]?.int ?? 0
-            outcome.cachedTokens += last["cachedInputTokens"]?.int ?? 0
-        case "turn/completed":
-            outcome.status = p["turn"]?["status"]?.string ?? "completed"
-            outcome.error = p["turn"]?["error"]?["message"]?.string
-            outcome.text = order.compactMap { messages[$0] }.joined(separator: "\n\n")
-            done = true
-            for w in waiters { w.resume(returning: outcome) }
-            waiters.removeAll()
-        default: break
-        }
-    }
-
-    func waitForCompletion() async -> Outcome {
-        if done { return outcome }
-        return await withCheckedContinuation { waiters.append($0) }
-    }
-}
+#endif

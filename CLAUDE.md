@@ -6,13 +6,14 @@ Dil: arayüz, kod yorumları, test adları ve commit mesajları **Türkçe**. Co
 ## Komutlar
 ```sh
 scripts/test.sh                      # Swift Testing (CLT rpath hilesi içerir) — `swift test` doğrudan çalışmaz
-scripts/build-app.sh                 # dist/Workspace AI.app (ad-hoc imza)
+scripts/gelistir-kapisi.sh [--hizli]   # TEK KOMUT KAPI: test+paket+çeviri+MAS+erişilebilirlik+sızıntı+artık süreç; KAPI: GEÇTİ/KALDI, çıkış 0/1 (--hizli paketi atlar)
+scripts/build-app.sh                 # ~/Applications/Workspace AI.app (tek kopya, ad-hoc imza)
 python3 scripts/l10n.py check        # TR/EN çeviri kapsamı; yeni L("…") anahtarı ekleyince çalıştır
-MARKA_SNAPSHOT=<klasör> "dist/Workspace AI.app/Contents/MacOS/MarkaCalismaAlani"   # ekranları PNG çizer
+MARKA_WORKSPACE=<geçici> MARKA_FOLDERS=<geçici> MARKA_SNAPSHOT=<klasör> "$HOME/Applications/Workspace AI.app/Contents/MacOS/MarkaCalismaAlani"   # ekranları PNG çizer (geçici alan ZORUNLU)
 swift run MarkaDogrula codex         # gerçek Codex App Server ile uçtan uca
 scripts/release.sh [--sign "Developer ID Application: …" --notarize <profil>]   # dist/MarkaCalismaAlani-<sürüm>.dmg
 ```
-Bitti demeden önce: `scripts/test.sh` + `scripts/build-app.sh` + `python3 scripts/l10n.py check` üçü de temiz.
+Bitti demeden önce: `scripts/gelistir-kapisi.sh` (bayraksız) `KAPI: GEÇTİ` verir; ayrı ayrı: `scripts/test.sh` + `scripts/build-app.sh` + `python3 scripts/l10n.py check` temiz.
 
 ## Yapı
 - `Sources/MarkaCore` — veri modeli (`Model/`), GRDB şeması ve tetikleyiciler (`Database/AppDatabase.swift`), `Store+*.swift` yazma/okuma, AI (`AI/`), raporlar, yedek, içe aktarım.
@@ -40,4 +41,14 @@ Bitti demeden önce: `scripts/test.sh` + `scripts/build-app.sh` + `python3 scrip
 - Anthropic API anahtarı aranmaz, Keychain taranmaz; kullanıcı verir.
 
 ## Sürüm planı
-Güncel plan: `docs/surum-0.3.0.md` (terminal merkezli yeni arayüz; önceki: `docs/surum-0.2.1.md`, `docs/surum-0.2.0.md`). Arayüz ölçümü: `scripts/ui-olcum.sh`. Ajan ekibi: `.claude/agents/`.
+Güncel plan: `docs/ai-calisma-alani-plani.md` (App Store hedefli yapay zekâ çalışma alanı; terminal kalktı, asistan paneli var). Bekleyen işler: `docs/yapilacaklar-20.md`, `docs/tasarim-gelistirme-20*.md`. Eski planlar: `docs/surum-0.3.0.md`, `docs/surum-0.2.x.md`.
+
+## Otomatik geliştirme ekibi (`.claude/agents/`, tek komut: `/gelistir [konu]`)
+| Ekip | Ajan | Görevi |
+|---|---|---|
+| Ürün | `urun-yoneticisi` | bekleyenleri sıralar, sprint seçer, kabul ölçütü yazar (kod yazmaz) |
+| Tasarım | `tasarim-lideri` → `arayuz-gelistirici` · `arayuz-denetci` | şartname → SwiftUI → denetim (açık+koyu çizimle) |
+| Kodlama | `swift-gelistirici` · `test-muhendisi` · `ai-saglayici-uzmani` | çekirdek/AI/veri, testler |
+| Güvence | `marka-yalitim-muhafizi` · `veri-gizliligi-denetcisi` · `kalite-kapisi` · `surum-muhendisi` | yalıtım, gizlilik, mekanik kapı, paket |
+
+Döngü: ürün → tasarım → uygulama → denetim → **kalite kapısı GEÇTİ** → rapor. Commit/push yalnız kullanıcı onayıyla. Alt ajanlar bu dosyayı okumayabilir: yasakları (gerçek veri alanı, `open`, commit, geçici `MARKA_WORKSPACE`) göreve **kopyala**. Süreç hijyeni: ekran yakalama başarısız olursa bile açılan süreç kapatılır (`scripts/pencere-goruntu.sh` kendisi temizler).

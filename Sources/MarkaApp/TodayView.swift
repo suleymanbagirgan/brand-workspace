@@ -41,7 +41,7 @@ struct TodayView: View {
         }
         .navigationTitle(app.preferences.scope.kind == .trial ? L("Bugün · Demo") : L("Bugün"))
         // Açılışta ilk metin alanı odak halkası almasın (⌘F ile odaklanır).
-        .onAppear { DispatchQueue.main.async { if !app.focusSearch { NSApp.keyWindow?.makeFirstResponder(nil) } } }
+        .onAppear { DispatchQueue.main.async { if !app.focusSearch { OpeningFocus.settle() } } }
         .onChange(of: app.focusSearch) { _, requested in if requested { takeSearchFocus() } }
         .task { if app.focusSearch { try? await Task.sleep(for: .milliseconds(150)); takeSearchFocus() } }
     }
@@ -61,34 +61,46 @@ struct TodayView: View {
         }
     }
 
+    /// Başlık + arama: geniş pencerede arama başlığın ilk satırıyla aynı tabanda sağda; dar pencerede (ör. asistan paneli
+    /// açıkken) başlığın altına iner ve tam genişlik alır.
     private var header: some View {
-        SectionHeading(title: greeting, subtitle: Date().formatted(.dateTime.day().month(.wide).weekday(.wide))) {
-            InputField(title: L("Ara (⌘F)"), text: $query, focus: $searchFocused)
-                .frame(width: 260)
-                .accessibilityLabel(L("Tüm markalarda ara"))
+        let subtitle = Date().formatted(.dateTime.day().month(.wide).weekday(.wide))
+        return ViewThatFits(in: .horizontal) {
+            SectionHeading(title: greeting, subtitle: subtitle, actionsAlignment: .firstTextBaseline) {
+                TodaySearchField(text: $query, focus: $searchFocused).frame(width: 260)
+            }
+            VStack(alignment: .leading, spacing: Design.Space.m) {
+                SectionHeading(title: greeting, subtitle: subtitle)
+                TodaySearchField(text: $query, focus: $searchFocused)
+            }
         }
         .padding(.bottom, Design.Space.l)
     }
 
     @ViewBuilder private func sections(_ t: TodaySummary) -> some View {
-        tiles(t)
-        TodaySectionTitle(text: L("Onay bekliyor"))
-        // Sayı kenar çubuğu ve onay bandıyla aynı: bekleyen öneriler + klasördeki eklenmemiş dosyalar (taranmışsa).
+        // Onay bekleyenler en üstte (tek vurgu): sayı kenar çubuğu ve onay bandıyla aynı — bekleyen öneriler + klasördeki
+        // eklenmemiş dosyalar (taranmışsa). Her satır o markanın incelemesine geçer.
         let pendingBrands = app.brands.map(\.id).filter { app.approvalCount($0) > 0 }
+        let pendingTotal = pendingBrands.reduce(0) { $0 + app.approvalCount($1) }
+        Text(LF("Onay bekliyor · %d", pendingTotal)).font(Design.Font.body.weight(.bold))
+            .padding(.bottom, Design.Space.xs)
+            .accessibilityAddTraits(.isHeader)
         if pendingBrands.isEmpty { Text(L("Onay bekleyen bir şey yok.")).captionStyle().padding(.vertical, Design.Space.s) }
         if !pendingBrands.isEmpty {
             VStack(spacing: 0) {
                 ForEach(pendingBrands, id: \.self) { brandId in
-            TodayRow(brandId: brandId, text: LF("%d onay bekliyor", app.approvalCount(brandId))) {
-                app.select(brand: brandId)
-                app.brandSheet = .approvals(brandId)
-            } trailing: {
-                Text(L("İncele"))
-            }
-        }
+                    TodayRow(brandId: brandId, text: LF("%d onay bekliyor", app.approvalCount(brandId))) {
+                        app.select(brand: brandId)
+                        app.brandSheet = .approvals(brandId)
+                    } trailing: {
+                        Text(L("İncele")).foregroundStyle(Design.accent).fontWeight(.medium)
+                    }
+                    .accessibilityHint(L("İncelemeyi açar"))
+                }
             }
             .flatList()
         }
+        tiles(t).padding(.top, Design.Space.l)
 
         TodaySectionTitle(text: L("Geciken"))
         if t.overdue.isEmpty { Text(L("Geciken iş yok.")).captionStyle().padding(.vertical, Design.Space.s) }
@@ -137,21 +149,18 @@ struct TodayView: View {
         }
     }
 
-    /// Dört özet kutucuğu (Hatırlatıcılar'ın ana ekranı gibi): büyük sayı, simge, dokununca ilgili yere git.
+    /// Üç özet kutucuğu (Hatırlatıcılar'ın ana ekranı gibi): büyük sayı, simge, dokununca ilgili yere git. Onay bekleyenler
+    /// kutucuk değil, üstteki listedir.
     private func tiles(_ t: TodaySummary) -> some View {
-        let pendingBrands = app.brands.map(\.id).filter { app.approvalCount($0) > 0 }
-        let pendingTotal = pendingBrands.reduce(0) { $0 + app.approvalCount($1) }
-        let doneTotal = t.week.reduce(0) { $0 + $1.tasksDone + $1.workLogs + $1.files + $1.notes }
+        // Sayı ile etiket aynı şeyi söyler: yalnız biten görevler (iş kaydı/dosya/not aşağıdaki satır içi dökümde).
+        let doneTotal = CountDefinitions.weekDoneTaskTotal(t.week)
         let awaitingTotal = t.awaiting.reduce(0) { $0 + $1.titles.count }
-        return HStack(spacing: 14) {
-            TodayTile(symbol: "checkmark.seal", title: L("Onay bekliyor"), count: pendingTotal, emphasize: pendingTotal > 0) {
-                if let id = pendingBrands.first { app.select(brand: id); app.brandSheet = .approvals(id) }
-            }
+        return TileGrid(columns: 3) {
             TodayTile(symbol: "exclamationmark.circle", title: L("Geciken"), count: t.overdue.count, danger: !t.overdue.isEmpty) {
                 if let first = t.overdue.first { app.open(first.ref) }
             }
-            TodayTile(symbol: "clock.arrow.circlepath", title: L("Bu hafta yapılan"), count: doneTotal) {
-                if let w = t.week.first { app.select(brand: w.brandId, tab: .flow) }
+            TodayTile(symbol: "clock.arrow.circlepath", title: L("Bu hafta biten görev"), count: doneTotal) {
+                if let w = t.week.first(where: { $0.tasksDone > 0 }) ?? t.week.first { app.select(brand: w.brandId, tab: .flow) }
             }
             TodayTile(symbol: "hourglass", title: L("Karar bekleniyor"), count: awaitingTotal) {
                 if let a = t.awaiting.first { app.select(brand: a.brandId, tab: .todo) }
@@ -161,12 +170,45 @@ struct TodayView: View {
     }
 
     private func weekText(_ w: TodaySummary.Week) -> String {
-        var parts: [String] = []
-        if w.tasksDone > 0 { parts.append(LF("%d görev bitti", w.tasksDone)) }
-        if w.workLogs > 0 { parts.append(LF("%d iş kaydı", w.workLogs)) }
-        if w.files > 0 { parts.append(LF("%d dosya", w.files)) }
-        if w.notes > 0 { parts.append(LF("%d not", w.notes)) }
-        return parts.joined(separator: " · ")
+        // H3-10: her parça kendi birimiyle; birimler toplanmaz (`CountDefinitions.weekParts`).
+        CountDefinitions.weekParts(w).map { part in
+            switch part.unit {
+            case .task: LF("%d görev bitti", part.count)
+            case .workLog: LF("%d iş kaydı", part.count)
+            case .file: LF("%d dosya", part.count)
+            case .note: LF("%d not", part.count)
+            }
+        }.joined(separator: " · ")
+    }
+}
+
+/// Bugün'ün arama kutusu: solda büyüteç, yer tutucu, sağda "⌘F" kısayol ipucu. Ekran çiziminde düz metin.
+struct TodaySearchField: View {
+    @Environment(\.isSnapshot) private var isSnapshot
+    @Binding var text: String
+    var focus: FocusState<Bool>.Binding
+
+    var body: some View {
+        HStack(spacing: Design.Space.xs) {
+            Image(systemName: "magnifyingglass").font(Design.Icon.small).foregroundStyle(.secondary).accessibilityHidden(true)
+            field.frame(maxWidth: .infinity, alignment: .leading)
+            if text.isEmpty {
+                Text("⌘F").font(Design.Font.small).foregroundStyle(.tertiary).accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, Design.Space.s).padding(.vertical, Design.Space.xs)
+        .background(RoundedRectangle(cornerRadius: Design.Radius.small).fill(Design.bandBackground))
+        .overlay(RoundedRectangle(cornerRadius: Design.Radius.small).strokeBorder(Design.line))
+    }
+
+    @ViewBuilder private var field: some View {
+        if isSnapshot {
+            Text(text.isEmpty ? L("Kayıtlarda ara") : text).foregroundStyle(text.isEmpty ? .secondary : .primary).lineLimit(1)
+        } else {
+            TextField(L("Kayıtlarda ara"), text: $text).textFieldStyle(.plain).focused(focus)
+                .accessibilityLabel(L("Tüm markalarda ara"))
+                .accessibilityHint("⌘F")
+        }
     }
 }
 
@@ -174,7 +216,7 @@ struct TodayView: View {
 struct TodaySectionTitle: View {
     let text: String
     var body: some View {
-        Text(text).font(Design.Font.section)
+        Text(text).font(Design.Font.body.weight(.bold))
             .padding(.top, Design.Space.l).padding(.bottom, Design.Space.xs)
             .accessibilityAddTraits(.isHeader)
     }
@@ -194,7 +236,11 @@ struct TodayRow<Trailing: View>: View {
         let brandName = app.brands.first { $0.id == brandId }?.name ?? ""
         Button(action: action) {
             HStack(alignment: .firstTextBaseline, spacing: Design.Space.m) {
-                Text(brandName).captionStyle().lineLimit(1).frame(width: 140, alignment: .leading)
+                HStack(spacing: 8) {
+                    BrandAvatar(name: brandName, tintKey: brandId, size: 20).accessibilityHidden(true)
+                    Text(brandName).font(Design.Font.callout.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .frame(width: 160, alignment: .leading)
                 if let kind { Text(kind).captionStyle().lineLimit(1).frame(width: 100, alignment: .leading) }
                 Text(text).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 trailing
@@ -215,7 +261,7 @@ struct TodaySearchResults: View {
     let query: String
 
     var body: some View {
-        let hits = (try? app.store?.searchToday(query)) ?? []
+        let hits = app.read(or: []) { try $0.searchToday(query) }
         VStack(alignment: .leading, spacing: 0) {
             TodaySectionTitle(text: LF("Arama sonuçları · %d", hits.count))
             if hits.isEmpty { Text(L("Sonuç yok.")).captionStyle().padding(.vertical, Design.Space.s) }
@@ -238,6 +284,8 @@ struct TodayTile: View {
     let count: Int
     var emphasize = false
     var danger = false
+    /// Dar kutucuk dizisinde (Şirket özeti) etiket iki satıra sarar ve iki satırlık yer ayırır: kesilmez, kutular eş boyda kalır.
+    var titleLines = 1
     let action: () -> Void
     @State private var hovering = false
 
@@ -246,22 +294,25 @@ struct TodayTile: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Image(systemName: symbol).font(.system(size: 15, weight: .semibold)).foregroundStyle(tint)
+                    Image(systemName: symbol).font(Design.Icon.medium.weight(.semibold)).foregroundStyle(tint)
                         .frame(width: 32, height: 32)
                         .background(Circle().fill(Design.windowBackground))
                         .overlay(Circle().strokeBorder(Design.line))
                     Spacer()
-                    Text(verbatim: "\(count)").font(.system(size: 30, weight: .semibold)).monospacedDigit()
+                    // Sayı hiçbir genişlikte satıra bölünmez (dar kutuda "1"/"3" diye kırılıyordu); gerekirse küçülür.
+                    Text(verbatim: "\(count)").font(Design.Font.display.weight(.semibold)).monospacedDigit()
+                        .lineLimit(1).minimumScaleFactor(0.6).layoutPriority(1)
                         .foregroundStyle(count == 0 ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
                         .contentTransition(.numericText())
                 }
-                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+                Text(title).font(Design.Font.callout.weight(.medium)).foregroundStyle(.secondary)
+                    .lineLimit(titleLines, reservesSpace: titleLines > 1).fixedSize(horizontal: false, vertical: true)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(hovering ? AnyShapeStyle(Design.rowSelected) : AnyShapeStyle(Design.panel)))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Design.line))
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(RoundedRectangle(cornerRadius: Design.Radius.large, style: .continuous).fill(hovering ? AnyShapeStyle(Design.rowSelected) : AnyShapeStyle(Design.panel)))
+            .overlay(RoundedRectangle(cornerRadius: Design.Radius.large, style: .continuous).strokeBorder(Design.line))
+            .contentShape(RoundedRectangle(cornerRadius: Design.Radius.large, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }

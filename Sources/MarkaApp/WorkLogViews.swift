@@ -5,6 +5,10 @@ import SwiftUI
 /// İş kaydı düzenleyicisi (Akış › ayrıntı paneli › Düzenle): düz satırlar (sistem formu yok; U9) — başlık, tarih, görev,
 /// yedi soru ve bağlı dosyalar. Doğrulama panelde yapılır (tek yer); doğrulanmış kaydın içeriği değişirse yeniden
 /// "Doğrulanmadı" olur. Doğrulanmış kayıt buradan geri çekilir.
+///
+/// Yeni kayıt (`isNew`, H2-03/U-09: biten görevde "İş kaydı yaz", Özet'te "+ İş kaydı"): kullanıcının yazdığı kayıt
+/// `Store.saveUserWorkLog` ile kaydedilir ve aynı işlemde doğrulanır; yapay zekâ olmadan rapora girer. Çekirdek kuralı
+/// (“Ne yapıldı?” dolu + en az bir görev ya da dosya) burada da gösterilir; düğme kural sağlanana dek kapalı.
 struct WorkLogEditor: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -12,21 +16,26 @@ struct WorkLogEditor: View {
     @State private var inputs: Set<String> = []
     @State private var outputs: Set<String> = []
     @State private var confirmRetract = false
+    let isNew: Bool
 
-    init(detail: WorkLogDetail) {
+    init(detail: WorkLogDetail, isNew: Bool = false) {
+        self.isNew = isNew
         _detail = State(initialValue: detail)
         _inputs = State(initialValue: Set(detail.inputs.map(\.id)))
         _outputs = State(initialValue: Set(detail.outputs.map(\.id)))
     }
 
     var body: some View {
-        let sources = (try? app.store?.sources(brandId: detail.log.brandId)) ?? []
-        let tasks = (try? app.store?.tasks(brandId: detail.log.brandId)) ?? []
+        let sources = app.read(or: []) { try $0.sources(brandId: detail.log.brandId) }
+        let tasks = app.read(or: []) { try $0.tasks(brandId: detail.log.brandId) }
         VStack(alignment: .leading, spacing: 0) {
             PageScroll {
                 VStack(alignment: .leading, spacing: Design.Space.m) {
-                    Text(L("İş kaydı")).font(Design.Font.title).accessibilityAddTraits(.isHeader)
-                    if detail.log.status == .verified {
+                    Text(isNew ? L("İş kaydı yaz") : L("İş kaydı")).font(Design.Font.heading.weight(.semibold)).accessibilityAddTraits(.isHeader)
+                    if isNew {
+                        Text(L("Senin yazdığın iş kaydı kaydedilince doğrulanmış sayılır ve rapora girer. Yapay zekâ gerekmez."))
+                            .captionStyle().fixedSize(horizontal: false, vertical: true)
+                    } else if detail.log.status == .verified {
                         Text(L("Doğrulanmış iş kaydı. İçeriği değiştirirsen yeniden “Doğrulanmadı” olur ve tekrar doğrulaman gerekir."))
                             .captionStyle().fixedSize(horizontal: false, vertical: true)
                     }
@@ -57,9 +66,15 @@ struct WorkLogEditor: View {
                 }
                 Spacer()
                 Button(L("Vazgeç")) { dismiss() }.buttonStyle(.text).keyboardShortcut(.cancelAction)
-                Button(L("Kaydet"), action: save)
+                // Return çok satırlı alanlarda satır ekler; kaydetme kısayolu ⌘S (Şirket ekranıyla aynı).
+                let problem = isNew ? newProblem(sources: sources, tasks: tasks) : nil
+                if let problem {
+                    Text(problem).captionStyle().lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
+                Button(isNew ? L("Kaydet ve rapora ekle") : L("Kaydet"), action: save)
                     .buttonStyle(.borderedProminent)
-                    .disabled(detail.log.title.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(detail.log.title.trimmingCharacters(in: .whitespaces).isEmpty || problem != nil)
             }
             .padding(.horizontal, Design.Space.l).padding(.vertical, Design.Space.m)
         }
@@ -81,10 +96,24 @@ struct WorkLogEditor: View {
         }
     }
 
+    /// Yeni kaydın doğrulama engeli: çekirdekteki `WorkLogDetail.verificationProblem` ile aynı kural (tek kaynak),
+    /// formdaki seçimlerle sorulur. Kayıt sırasında çekirdek kuralı yeniden uygular.
+    private func newProblem(sources: [Source], tasks: [WorkTask]) -> String? {
+        WorkLogDetail(log: detail.log,
+                      inputs: sources.filter { inputs.contains($0.id) },
+                      outputs: sources.filter { outputs.contains($0.id) },
+                      task: tasks.first { $0.id == detail.log.taskId }).verificationProblem
+    }
+
     func save() {
         guard let store = app.store else { return }
-        let ok = app.perform {
-            try store.saveWorkLog(detail.log, inputSourceIds: Array(inputs), outputSourceIds: Array(outputs))
+        let ok: WorkLog? = app.perform(title: L("İş kaydı kaydedilemedi"), context: "iskaydi.kaydet") {
+            if isNew {
+                try store.saveUserWorkLog(detail.log, inputSourceIds: Array(inputs), outputSourceIds: Array(outputs),
+                                          verifiedBy: Panel.verifier)
+            } else {
+                try store.saveWorkLog(detail.log, inputSourceIds: Array(inputs), outputSourceIds: Array(outputs))
+            }
         }
         if ok != nil { dismiss() }
     }
@@ -121,5 +150,16 @@ struct SourcePicker: View {
                 }
             }
         }
+    }
+}
+
+/// Elle iş kaydı için boş taslaklar (H2-03): biten görevden (başlık, tarih ve görev bağı dolu) ya da yalnız markadan.
+extension WorkLogDetail {
+    static func newDraft(for task: WorkTask) -> WorkLogDetail {
+        WorkLogDetail(log: .draft(for: task), inputs: [], outputs: [], task: task)
+    }
+
+    static func newDraft(brandId: String) -> WorkLogDetail {
+        WorkLogDetail(log: WorkLog(brandId: brandId, title: ""), inputs: [], outputs: [], task: nil)
     }
 }

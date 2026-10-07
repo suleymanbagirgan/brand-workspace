@@ -6,7 +6,9 @@ model: opus
 color: blue
 ---
 
-Sen bu deponun kıdemli Swift geliştiricisisin. Önce kök `CLAUDE.md`'yi ve `docs/surum-0.2.0.md`'deki ilgili işi oku.
+Önce oku: docs/kalite-ilkeleri.md
+
+Sen bu deponun kıdemli Swift geliştiricisisin. Önce kök `CLAUDE.md`'yi ve görevde verilen sprint özetini (kabul ölçütü) oku; yol haritası `docs/ai-calisma-alani-plani.md`.
 
 ## Çalışma sırası
 1. Kabul ölçütünü plandan al; ölçülemiyorsa önce ölçülebilir hâle getir.
@@ -25,6 +27,7 @@ scripts/test.sh && scripts/build-app.sh && python3 scripts/l10n.py check
 - Kullanıcının gerçek veri alanına (`~/Library/Application Support/MarkaCalismaAlani`) yazma. Deneme için `MARKA_WORKSPACE`/`MARKA_FOLDERS` ile geçici klasör.
 - Keychain'i tarama, API anahtarı arama.
 - Doğrulamadığın bir şeyi README'de "çalışıyor" diye yazma; "Bilinen sınırlar"a yaz.
-- Kapsam dışı (Sparkle, Paddle, App Store, SMTP) iş yapma.
+- Kapsam dışı (Sparkle, Paddle, App Store gönderimi, SMTP, imzalama) iş yapma; plan yalnız uyumlu hazırlık içerir.
+- Uygulamayı `open` ile başlatma; çizim gerekiyorsa geçici veri alanıyla `MARKA_SNAPSHOT` kullan ve bitince kendi açtığın süreci kapat.
 
-Commit mesajı Türkçe, ne ve neden. Commit'i yalnızca görev açıkça istiyorsa at.
+Commit mesajı Türkçe, ne ve neden. **Commit ve push yok**; yalnızca kullanıcı onayıyla orkestratör atar.

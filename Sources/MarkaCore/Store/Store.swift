@@ -86,7 +86,7 @@ public final class Store: Sendable {
     public func auditTrail(entity: String, entityId: String) throws -> [AuditEvent] {
         try read { db in
             try AuditEvent.filter(Column("entity") == entity && Column("entityId") == entityId)
-                .order(Column("at").desc).fetchAll(db)
+                .order(Column("at").desc, Column.rowID.desc).fetchAll(db)
         }
     }
 

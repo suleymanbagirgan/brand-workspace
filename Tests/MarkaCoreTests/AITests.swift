@@ -38,6 +38,26 @@ final class MockAnthropic: URLProtocol, @unchecked Sendable {
     }
 }
 
+/// Gerçek sağlayıcıyı sarar: ilk araç çağrısından sonra kancayı çalıştırır (kullanıcının araç turları arasında "Durdur"a basması).
+struct IlkAractanSonraKanca: AIProvider {
+    let inner: any AIProvider
+    let hook: @Sendable () async -> Void
+    var kind: AIProviderKind { inner.kind }
+    var capabilities: AIProviderCapabilities { inner.capabilities }
+    func sessionModel(settings: AISettings) -> String { inner.sessionModel(settings: settings) }
+    func cancel(sessionId: String) async { await inner.cancel(sessionId: sessionId) }
+    func runTurn(_ turn: AITurn, assistant: inout AIMessage) async throws {
+        var t = turn
+        let original = turn.callTool, hook = hook, fired = TurnCancellation()
+        t.callTool = { name, input in
+            let r = await original(name, input)
+            if !fired.isCancelled { fired.cancel(); await hook() }
+            return r
+        }
+        try await inner.runTurn(t, assistant: &assistant)
+    }
+}
+
 @Suite(.serialized) struct AITests {
     func engine(store: Store) -> ChatEngine {
         let config = URLSessionConfiguration.ephemeral
@@ -211,6 +231,103 @@ final class MockAnthropic: URLProtocol, @unchecked Sendable {
         #expect(MockAnthropic.requests.first?["output_config"] == nil)
     }
 
+    @Test func calisanRoluGonderilenIstegeGirer() async throws {
+        let store = try makeStore()
+        let b = try store.createBrand(name: "A")
+        try store.setAIProviders(b.id, providers: [.anthropic])
+        let own = try store.createBrand(name: "Stüdyo", isOwn: true)   // rol şirket verisidir: Stüdyo izni gerekir
+        try store.setAIProviders(own.id, providers: [.anthropic])
+        let ai = try store.saveTeamMember(TeamMember(kind: .ai, name: "Claude Code", title: "Kıdemli yazılımcı", level: .senior,
+                                                     charter: "Siteyi inceler.", skills: ["test", "kod incelemesi"]))
+        try store.assignMember(ai.id, to: b.id)
+        MockAnthropic.requests = []; MockAnthropic.urls = []
+        MockAnthropic.responses = [Self.kisaYanit]
+        let e = engine(store: store)
+        let session = try await e.createSession(scope: .brand(b.id), provider: .anthropic, title: "x", memberId: ai.id)
+        #expect(session.memberId == ai.id)
+        for await ev in await e.send(sessionId: session.id, text: "merhaba") {
+            if case .failed(let m) = ev { Issue.record("Beklenmeyen hata: \(m)") }
+        }
+        let sent = MockAnthropic.requests.first?.compactString() ?? ""
+        #expect(sent.contains("Claude Code") && sent.contains("Siteyi inceler.") && sent.contains("kod incelemesi"))
+        #expect(sent.contains("yalnızca öneri üretirsin"))
+    }
+
+    /// B1/O1 uçtan uca: Anthropic'e giden istek, Stüdyo izni yoksa şirket profili, ekip ve görev tarifi taşımaz; müşteri
+    /// markasında `calisan_oner` aracı gönderilmez.
+    @Test func anthropicIstegindeStudyoIzniYoksaSirketVerisiVeCalisanOnerYok() async throws {
+        let store = try makeStore()
+        let own = try store.createStudio(name: "Nova Stüdyo")
+        try store.setAIProviders(own.id, providers: [.codex])
+        _ = try store.saveCompanyProfile(CompanyProfile(name: "Nova Stüdyo", mission: "SIRKET-MISYONU"))
+        let b = try store.createBrand(name: "Deneme Yangın")
+        try store.setAIProviders(b.id, providers: [.anthropic])
+        let ai = try store.saveTeamMember(TeamMember(kind: .ai, name: "Claude Haiku", title: "Asistan", charter: "GOREV-TARIFI"))
+        try store.assignMember(ai.id, to: b.id)
+        MockAnthropic.requests = []; MockAnthropic.urls = []
+        MockAnthropic.responses = [Self.kisaYanit]
+        let e = engine(store: store)
+        let session = try await e.createSession(scope: .brand(b.id), provider: .anthropic, title: "x")
+        for await ev in await e.send(sessionId: session.id, text: "merhaba") {
+            if case .failed(let m) = ev { Issue.record("Beklenmeyen hata: \(m)") }
+        }
+        let req = try #require(MockAnthropic.requests.first)
+        let sent = req.compactString()
+        #expect(sent.contains("Deneme Yangın"))
+        #expect(!sent.contains("SIRKET-MISYONU") && !sent.contains("Claude Haiku") && !sent.contains("GOREV-TARIFI"))
+        let toolNames = (req["tools"]?.array ?? []).compactMap { $0["name"]?.string }
+        #expect(!toolNames.isEmpty && !toolNames.contains("calisan_oner"))
+    }
+
+    @Test func anthropicIstegindeStudyoIzinliyseSirketVerisiGider() async throws {
+        let store = try makeStore()
+        let own = try store.createStudio(name: "Nova Stüdyo")
+        try store.setAIProviders(own.id, providers: [.anthropic])
+        _ = try store.saveCompanyProfile(CompanyProfile(name: "Nova Stüdyo", mission: "SIRKET-MISYONU"))
+        let b = try store.createBrand(name: "Deneme Yangın")
+        try store.setAIProviders(b.id, providers: [.anthropic])
+        MockAnthropic.requests = []; MockAnthropic.urls = []
+        MockAnthropic.responses = [Self.kisaYanit]
+        let e = engine(store: store)
+        let session = try await e.createSession(scope: .brand(b.id), provider: .anthropic, title: "x")
+        for await ev in await e.send(sessionId: session.id, text: "merhaba") {
+            if case .failed(let m) = ev { Issue.record("Beklenmeyen hata: \(m)") }
+        }
+        #expect(MockAnthropic.requests.first?.compactString().contains("SIRKET-MISYONU") == true)
+    }
+
+    @Test func calisanRoluYetkiSinirlariniAsamaz() async throws {
+        let store = try makeStore()
+        let a = try store.createBrand(name: "A")
+        let b = try store.createBrand(name: "B")
+        try store.setAIProviders(a.id, providers: [.anthropic])
+        let baskaMarkada = try store.saveTeamMember(TeamMember(kind: .ai, name: "Başka", title: "Yazar"))
+        let insan = try store.saveTeamMember(TeamMember(kind: .human, name: "Aylin", title: "Danışman"))
+        let eski = try store.saveTeamMember(TeamMember(kind: .ai, name: "Eski", title: "Junior"))
+        try store.assignMember(baskaMarkada.id, to: b.id)
+        try store.assignMember(insan.id, to: a.id)
+        try store.assignMember(eski.id, to: a.id)
+        try store.archiveTeamMember(eski.id)
+        let e = engine(store: store)
+        for id in [baskaMarkada.id, insan.id, eski.id, "yok"] {
+            await #expect(throws: MarkaError.self) { _ = try await e.createSession(scope: .brand(a.id), provider: .anthropic, title: "x", memberId: id) }
+        }
+        await #expect(throws: MarkaError.self) { _ = try await e.createSession(scope: .allBrands, provider: .anthropic, title: "x", memberId: insan.id) }
+    }
+
+    @Test func arsivlenenCalisaninEskiOturumuAsistanOlarakSurer() throws {
+        let store = try makeStore()
+        let b = try store.createBrand(name: "A")
+        let own = try store.createBrand(name: "Stüdyo", isOwn: true)
+        try store.setAIProviders(own.id, providers: [.anthropic])
+        let ai = try store.saveTeamMember(TeamMember(kind: .ai, name: "Claude Code", title: "Yazılımcı", charter: "Gizli tarif"))
+        try store.assignMember(ai.id, to: b.id)
+        let session = AISession(brandId: b.id, scope: .brand, provider: .anthropic, model: "m", title: "", memberId: ai.id)
+        #expect(ContextBuilder(store: store).personaPrompt(session: session).contains("Gizli tarif"))
+        try store.archiveTeamMember(ai.id)
+        #expect(ContextBuilder(store: store).personaPrompt(session: session).isEmpty)
+    }
+
     @Test func baskaMarkaKimligiIleAracReddedilir() throws {
         let store = try makeStore()
         let a = try store.createBrand(name: "A")
@@ -287,4 +404,44 @@ final class MockAnthropic: URLProtocol, @unchecked Sendable {
         #expect(d.map(\.path) == ["a.md", "c.md", "b.md"])
         #expect(d.map(\.change) == ["modified", "added", "deleted"])
     }
+
+    /// A-19 (gerçek Anthropic döngüsü, sahte HTTP): araç turları arasında durdurma → yeni HTTP isteği 0, yeni öneri 0.
+    @Test func anthropicAracTurlariArasindaIptalYeniHTTPIstegiVeOneriUretmez() async throws {
+        let store = try makeStore()
+        let b = try store.createBrand(name: "Deneme Yangın")
+        try store.setAIProviders(b.id, providers: [.anthropic])
+        MockAnthropic.requests = []; MockAnthropic.urls = []
+        MockAnthropic.responses = [
+            MockAnthropic.sse([
+                ["type": "message_start", "message": ["model": "claude-opus-5", "usage": ["input_tokens": 10, "output_tokens": 1]]],
+                ["type": "content_block_start", "index": 0, "content_block": ["type": "tool_use", "id": "tu_1", "name": "gorev_oner", "input": [:]]],
+                ["type": "content_block_delta", "index": 0, "delta": ["type": "input_json_delta", "partial_json": "{\"baslik\": \"Birinci\"}"]],
+                ["type": "content_block_stop", "index": 0],
+                ["type": "content_block_start", "index": 1, "content_block": ["type": "tool_use", "id": "tu_2", "name": "gorev_oner", "input": [:]]],
+                ["type": "content_block_delta", "index": 1, "delta": ["type": "input_json_delta", "partial_json": "{\"baslik\": \"İkinci\"}"]],
+                ["type": "content_block_stop", "index": 1],
+                ["type": "message_delta", "delta": ["stop_reason": "tool_use"], "usage": ["output_tokens": 20]],
+            ]),
+            Self.kisaYanit,
+        ]
+        defer { MockAnthropic.responses = [] }
+        let ref = EngineRef()
+        let provider = IlkAractanSonraKanca(inner: AnthropicProvider(anthropicKey: { "test-anahtar" }, urlSession: Self.mockSession()),
+                                            hook: { await ref.engine?.cancel(sessionId: ref.sessionId) })
+        let e = ChatEngine(store: store, codex: CodexAppServer(), folders: BrandFolders(root: try tempDir("folders"), store: store),
+                           workspace: try tempDir("ws"), settings: AISettings(), anthropicKey: { "test-anahtar" }, urlSession: Self.mockSession(),
+                           diagnostics: nil, providers: [provider])
+        ref.engine = e
+        let session = try await e.createSession(scope: .brand(b.id), provider: .anthropic, title: "x")
+        ref.sessionId = session.id
+        var titles: [String] = []
+        for await ev in await e.send(sessionId: session.id, text: "Görevleri öner") {
+            if case .event(let r) = ev { titles.append(r.title) }
+        }
+        #expect(MockAnthropic.requests.count == 1)
+        #expect(try store.proposals(sessionId: session.id).count == 1)
+        #expect(titles.contains(L("Durduruldu")))
+        #expect(try await e.messages(sessionId: session.id).last?.state == .partial)
+    }
+
 }

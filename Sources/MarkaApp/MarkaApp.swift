@@ -6,23 +6,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // SwiftPM ile derlenen uygulama paketi dışından çalıştırılırsa ön plana gelsin.
         // Geliştirme: `MARKA_GORUNUM=light|dark` uygulamanın görünümünü sistemden bağımsız seçer (ekran doğrulaması için).
-        switch ProcessInfo.processInfo.environment["MARKA_GORUNUM"] {
+        switch DevHook.value("MARKA_GORUNUM") {
         case "light": NSApp.appearance = NSAppearance(named: .aqua)
         case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
         default: break
         }
-        if ProcessInfo.processInfo.environment["MARKA_GORUNUM"] == nil { AppModel.applyAppearance(AppModel.shared.appearance) }
+        if DevHook.value("MARKA_GORUNUM") == nil { AppModel.applyAppearance(AppModel.shared.appearance) }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Kapanırken yazılmakta olan alanlar kaydedilir (U-07). Eşzamanlı ve kısa: yalnız bekleyen yerel yazmalar.
+    func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated { _ = PendingEdits.shared.flushAll() }
+    }
+
     /// Menü çubuğu simgesi açıksa pencere kapanınca uygulama yaşamaya devam eder.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { !AppModel.shared.showMenuBarExtra }
-
-    /// Çalışan terminal oturumu varsa tek soru (U9); yoksa sorusuz kapanır.
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        AppModel.shared.confirmQuit() ? .terminateNow : .terminateCancel
-    }
 }
 
 @main
@@ -101,6 +101,8 @@ struct AppCommands: Commands {
         CommandMenu(L("Git")) {
             Button(L("Bugün")) { app.selection = .today }
                 .keyboardShortcut("0", modifiers: .command)
+            Button(L("Stüdyo")) { app.openStudio() }
+                .keyboardShortcut("9", modifiers: .command)
             Divider()
             ForEach(BrandTab.allCases) { tab in
                 Button(tab.title) {
@@ -128,7 +130,10 @@ struct RootView: View {
     var body: some View {
         @Bindable var app = app
         Group {
-            if let error = app.startupError {
+            if app.startupLocked {
+                // H1-09 (U-08): ikinci süreç. Veri bozuk değil; yedekten geri yükleme önerilmez.
+                WorkspaceLockedView()
+            } else if let error = app.startupError {
                 EmptyStateView(title: L("Veri tabanı açılamadı"),
                                message: error + "\n\n" + L("Yedekten geri yüklemek için Ayarlar › Veri bölümünü kullanabilirsin."),
                                actionTitle: L("Tekrar dene")) { app.openWorkspace() }
@@ -146,6 +151,7 @@ struct RootView: View {
                 }
             }
         }
+        .overlay(alignment: .bottom) { TimerNoticeBanner() }
         .sheet(isPresented: $app.showPalette) { CommandPalette().environment(app) }
         // Çentik zamanlayıcısı: sayaç başlayıp bitince ya da ayar değişince pencereyi güncelle.
         .onAppear { NotchTimerController.shared.update(app: app) }
@@ -157,6 +163,70 @@ struct RootView: View {
         } message: {
             Text(app.alert?.message ?? "")
         }
+    }
+}
+
+/// Veri alanı başka bir süreçte açık (H1-09, U-08). Diğer pencereyi öne getirme ve tekrar deneme; yedek önerisi yok.
+struct WorkspaceLockedView: View {
+    @Environment(AppModel.self) private var app
+
+    /// Aynı paket kimliğiyle çalışan diğer süreç (bu süreç hariç).
+    private var otherInstance: NSRunningApplication? {
+        guard let id = Bundle.main.bundleIdentifier else { return nil }
+        let me = ProcessInfo.processInfo.processIdentifier
+        return NSRunningApplication.runningApplications(withBundleIdentifier: id).first { $0.processIdentifier != me }
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "macwindow.on.rectangle").font(Design.Icon.hero.weight(.light)).foregroundStyle(.tertiary)
+                .padding(.bottom, 4).accessibilityHidden(true)
+            Text(L("Uygulama zaten açık")).font(Design.Font.heading.weight(.semibold))
+            Text(app.startupError ?? "").font(Design.Font.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 380)
+            Text(L("Diğer pencereye geç ya da onu kapatıp tekrar dene."))
+                .font(Design.Font.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            HStack(spacing: Design.Space.s) {
+                if let other = otherInstance {
+                    Button(L("Diğer pencereye geç")) {
+                        other.activate()
+                        NSApp.terminate(nil)
+                    }
+                    .actionPrimary()
+                }
+                Button(L("Tekrar dene")) { app.openWorkspace() }.actionSecondary()
+            }
+            .padding(.top, 6)
+        }
+        .padding(Design.Space.l)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Sayaç devri bildirimi (H1-08): alt kenarda kısa, sakin bir şerit; kendiliğinden kapanır, elle de kapatılır.
+struct TimerNoticeBanner: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if let notice = app.timerNotice {
+                HStack(spacing: Design.Space.s) {
+                    Image(systemName: "timer").foregroundStyle(.secondary).accessibilityHidden(true)
+                    Text(notice.text).font(Design.Font.callout).lineLimit(2)
+                    Button { app.timerNotice = nil } label: { Image(systemName: "xmark").font(Design.Icon.small.weight(.semibold)) }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .accessibilityLabel(L("Bildirimi kapat"))
+                }
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .card(radius: Design.Radius.medium)
+                .padding(.bottom, Design.Space.m)
+                .transition(.opacity)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: app.timerNotice)
     }
 }
 
@@ -178,6 +248,8 @@ struct DetailView: View {
             if let brand = app.brands.first(where: { $0.id == id }) {
                 BrandDetailView(brand: brand).id(id)
             }
+        case .company:
+            StudioSetupView()
         case .today, .none:
             TodayView()
         }
@@ -194,14 +266,14 @@ struct SidebarView: View {
     private var searchField: some View {
         Button { app.showPalette = true } label: {
             HStack(spacing: 9) {
-                Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(.secondary)
-                Text(L("Ara")).font(.system(size: 12)).foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").font(Design.Icon.small).foregroundStyle(.secondary)
+                Text(L("Ara")).font(Design.Font.callout).foregroundStyle(.secondary)
                 Spacer()
-                Text(verbatim: "⌘K").font(.system(size: 11)).foregroundStyle(.tertiary)
+                Text(verbatim: "⌘K").font(Design.Font.small).foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 10).frame(height: 30)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Design.windowBackground.opacity(0.7)))
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Design.line))
+            .background(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).fill(Design.windowBackground.opacity(0.7)))
+            .overlay(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).strokeBorder(Design.line))
         }
         .buttonStyle(.plain)
         .help(L("Komut paleti (⌘K)"))
@@ -219,13 +291,22 @@ struct SidebarView: View {
         let total = app.brands.reduce(0) { $0 + app.approvalCount($1.id) }
         return List(selection: Binding(get: { app.selection }, set: { app.selection = $0 })) {
             rowLabel(L("Bugün"), count: total, item: .today).tag(SidebarItem.today)
+            Section(L("Stüdyo")) {
+                if let own = app.ownBrand {
+                    rowLabel(own.name, subtitle: L("Kendi şirketimiz"), count: app.approvalCount(own.id), item: .brand(own.id), symbol: "building.2")
+                        .tag(SidebarItem.brand(own.id))
+                } else {
+                    rowLabel(L("Stüdyoyu kur"), subtitle: L("Biz kimiz, ekip, kendi işlerimiz"), count: 0, item: .company, symbol: "building.2")
+                        .tag(SidebarItem.company)
+                }
+            }
             Section(L("Markalar")) {
-                ForEach(app.brands) { brand in
+                ForEach(app.customerBrands) { brand in
                     rowLabel(brand.name, subtitle: brand.sector, count: app.approvalCount(brand.id), item: .brand(brand.id), brandName: brand.name, tintKey: brand.id)
                         .tag(SidebarItem.brand(brand.id))
                         .contextMenu {
                             Button(L("Klasörü Finder'da göster")) {
-                                if let folder = app.writeContext(brandId: brand.id) { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+                                if let folder = app.revealFolder(brandId: brand.id) { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
                             }
                         }
                 }
@@ -260,10 +341,18 @@ struct SidebarView: View {
             PageScroll {
                 VStack(alignment: .leading, spacing: 4) {
                     row(L("Bugün"), count: total, item: .today)
-                    Text(L("Markalar")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    Text(L("Stüdyo")).font(Design.Font.small.weight(.semibold)).foregroundStyle(.secondary)
                         .padding(.horizontal, 9).padding(.top, Design.Space.l).padding(.bottom, 2)
                         .accessibilityAddTraits(.isHeader)
-                    ForEach(app.brands) { brand in
+                    if let own = app.ownBrand {
+                        row(own.name, subtitle: L("Kendi şirketimiz"), count: app.approvalCount(own.id), item: .brand(own.id), symbol: "building.2")
+                    } else {
+                        row(L("Stüdyoyu kur"), subtitle: L("Biz kimiz, ekip, kendi işlerimiz"), count: 0, item: .company, symbol: "building.2")
+                    }
+                    Text(L("Markalar")).font(Design.Font.small.weight(.semibold)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 9).padding(.top, Design.Space.l).padding(.bottom, 2)
+                        .accessibilityAddTraits(.isHeader)
+                    ForEach(app.customerBrands) { brand in
                         row(brand.name, subtitle: brand.sector, count: app.approvalCount(brand.id), item: .brand(brand.id), brandName: brand.name, tintKey: brand.id)
                     }
                 }
@@ -292,19 +381,26 @@ struct SidebarView: View {
     }
 
     /// Satırın içeriği: marka avatarı, ad, sektör alt satırı ve onay sayısı.
-    private func rowLabel(_ title: String, subtitle: String? = nil, count: Int, item: SidebarItem, brandName: String? = nil, tintKey: String? = nil) -> some View {
+    private func rowLabel(_ title: String, subtitle: String? = nil, count: Int, item: SidebarItem, brandName: String? = nil, tintKey: String? = nil, symbol: String? = nil) -> some View {
         let selected = app.selection == item
         return HStack(spacing: 11) {
+            if let symbol {
+                Image(systemName: symbol).font(Design.Icon.medium.weight(.medium)).foregroundStyle(selected ? AnyShapeStyle(Design.accent) : AnyShapeStyle(.secondary))
+                    .frame(width: 30, height: 30)
+                    .background(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).fill(Design.panel))
+                    .overlay(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).strokeBorder(Design.line))
+                    .accessibilityHidden(true)
+            }
             if let brandName { BrandAvatar(name: brandName, tintKey: tintKey, selected: selected) }
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 13, weight: selected ? .semibold : .medium)).lineLimit(1)
+                Text(title).font(Design.Font.body.weight(selected ? .semibold : .medium)).lineLimit(1)
                 if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    Text(subtitle).font(Design.Font.small).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer(minLength: Design.Space.s)
             if count > 0 {
-                Text(verbatim: "\(count)").font(.system(size: 11, weight: .semibold)).monospacedDigit().foregroundStyle(Design.accent)
+                SidebarCount(count: count, selected: selected && !isSnapshot)
             }
         }
         .padding(.vertical, brandName == nil ? 2 : 3)
@@ -312,13 +408,13 @@ struct SidebarView: View {
         .accessibilityLabel(count > 0 ? LF("%1$@, %2$d öneri onay bekliyor", title, count) : title)
     }
 
-    private func row(_ title: String, subtitle: String? = nil, count: Int, item: SidebarItem, brandName: String? = nil, tintKey: String? = nil) -> some View {
+    private func row(_ title: String, subtitle: String? = nil, count: Int, item: SidebarItem, brandName: String? = nil, tintKey: String? = nil, symbol: String? = nil) -> some View {
         let selected = app.selection == item
         return Button { app.selection = item } label: {
-            rowLabel(title, subtitle: subtitle, count: count, item: item, brandName: brandName, tintKey: tintKey)
+            rowLabel(title, subtitle: subtitle, count: count, item: item, brandName: brandName, tintKey: tintKey, symbol: symbol)
                 .padding(.horizontal, 9)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(selected ? AnyShapeStyle(Design.rowSelected) : AnyShapeStyle(.clear)))
+                .background(RoundedRectangle(cornerRadius: Design.Radius.small, style: .continuous).fill(selected ? AnyShapeStyle(Design.rowSelected) : AnyShapeStyle(.clear)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -470,29 +566,35 @@ struct MenuBarPopover: View {
 
     var body: some View {
         let _ = app.revision
-        let tasks = ((try? app.store?.tasks(brandId: nil, statuses: [.todo, .inProgress, .waiting])) ?? []).sorted(by: WorkTask.displayOrder).prefix(5)
+        // İlk 5 açık görev SQL'de sıralanıp kesilir (tüm markaların binlerce görevi her veri değişikliğinde çözülmez).
+        let tasks = app.read(or: []) { try $0.tasks(brandId: nil, statuses: [.todo, .inProgress, .waiting], limit: 5) }
         let pending = app.brands.filter { app.approvalCount($0.id) > 0 }
         VStack(alignment: .leading, spacing: 14) {
             if let task = app.runningTask {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Circle().fill(Color.red).frame(width: 8, height: 8)
-                        Text(task.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                        Circle().fill(Color.red).frame(width: 8, height: 8).accessibilityLabel(L("Zamanlayıcı çalışıyor"))
+                        Text(task.title).font(Design.Font.body.weight(.semibold)).lineLimit(1)
                     }
                     HStack {
+                        // sabit-boyut: zamanlayıcı göstergesi; yuvarlak rakam tasarımı ve dar açılır pencerede sabit genişlik.
                         Text(Timecode.string(app.elapsed)).font(.system(size: 28, weight: .semibold, design: .rounded)).monospacedDigit()
                         Spacer()
                         Button { app.stopTimer() } label: { Label(L("Durdur"), systemImage: "stop.fill").labelStyle(.titleAndIcon) }
                             .buttonStyle(.borderedProminent).tint(.red)
                     }
                     if app.notchDismissed {
-                        Button(L("Çentikte tekrar göster")) { app.notchDismissed = false }.buttonStyle(.link).font(.system(size: 11))
+                        Button(L("Çentikte tekrar göster")) { app.notchDismissed = false }.buttonStyle(.link).font(Design.Font.small)
+                    }
+                    // H1-08: menü çubuğundan başlatılan sayaç da durdurulan sayacı söyler (pencere kapalı olabilir).
+                    if let notice = app.timerNotice {
+                        Text(notice.text).font(Design.Font.small).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding(12).background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.red.opacity(0.10)))
+                .padding(12).background(RoundedRectangle(cornerRadius: Design.Radius.medium, style: .continuous).fill(Color.red.opacity(0.10)))
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text(L("Hızlı görev")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                Text(L("Hızlı görev")).font(Design.Font.small.weight(.semibold)).foregroundStyle(.secondary)
                 HStack(spacing: 8) {
                     TextField(L("Yeni görev…"), text: $title).textFieldStyle(.roundedBorder).focused($focused).onSubmit(add)
                     Picker("", selection: Binding(get: { selectedBrandId }, set: { brandId = $0 })) {
@@ -500,22 +602,23 @@ struct MenuBarPopover: View {
                     }
                     .labelsHidden().frame(width: 110)
                 }
-                if added { Label(L("Eklendi"), systemImage: "checkmark.circle.fill").font(.system(size: 11)).foregroundStyle(.green) }
+                if added { Label(L("Eklendi"), systemImage: "checkmark.circle.fill").font(Design.Font.small).foregroundStyle(.green) }
             }
             if !tasks.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L("Sıradaki görevler")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.bottom, 4)
+                    Text(L("Sıradaki görevler")).font(Design.Font.small.weight(.semibold)).foregroundStyle(.secondary).padding(.bottom, 4)
                     ForEach(Array(tasks), id: \.id) { task in
                         let running = app.runningTimer?.taskId == task.id
                         HStack(spacing: 10) {
                             Button { running ? app.stopTimer() : app.startTimer(task.id) } label: {
-                                Image(systemName: running ? "stop.circle.fill" : "play.circle").font(.system(size: 18))
+                                Image(systemName: running ? "stop.circle.fill" : "play.circle").font(Design.Icon.large)
                                     .foregroundStyle(running ? Color.red : Color.secondary)
                             }
                             .buttonStyle(.plain).help(running ? L("Zamanlayıcıyı durdur") : L("Zamanlayıcıyı başlat"))
+                            .accessibilityLabel(running ? L("Zamanlayıcıyı durdur") : L("Zamanlayıcıyı başlat"))
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(task.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
-                                Text(app.brands.first { $0.id == task.brandId }?.name ?? "").font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                                Text(task.title).font(Design.Font.callout.weight(.medium)).lineLimit(1)
+                                Text(app.brands.first { $0.id == task.brandId }?.name ?? "").font(Design.Font.small).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
                             if let d = task.dueDate { DueLabel(day: d) }
@@ -530,9 +633,9 @@ struct MenuBarPopover: View {
                         Button { show(); app.select(brand: brand.id); app.brandSheet = .approvals(brand.id) } label: {
                             HStack {
                                 Image(systemName: "checkmark.seal.fill").foregroundStyle(Design.accent)
-                                Text(LF("%1$@ · %2$d onay bekliyor", brand.name, app.approvalCount(brand.id))).font(.system(size: 12))
+                                Text(LF("%1$@ · %2$d onay bekliyor", brand.name, app.approvalCount(brand.id))).font(Design.Font.callout)
                                 Spacer()
-                                Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(.secondary)
+                                Image(systemName: "chevron.right").font(Design.Icon.small).foregroundStyle(.secondary)
                             }
                         }
                         .buttonStyle(.plain)
@@ -546,7 +649,7 @@ struct MenuBarPopover: View {
                 Spacer()
                 Button(L("Simgeyi gizle")) { app.showMenuBarExtra = false }.buttonStyle(.link).foregroundStyle(.secondary)
             }
-            .font(.system(size: 12))
+            .font(Design.Font.callout)
         }
         .padding(16).frame(width: 340)
         .onAppear { focused = true }
@@ -565,5 +668,18 @@ struct MenuBarPopover: View {
     private func show() {
         NSApp.activate(ignoringOtherApps: true)
         if !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) { openWindow(id: "main") }
+    }
+}
+
+/// Kenar çubuğu satırındaki onay sayısı. Beyaz yalnız vurgulu (odaklı listede mavi) seçimde; pasif gri seçimde
+/// beyaz okunmuyordu (açık tema), orada vurgu rengi kullanılır. `backgroundProminence` seçimin vurgulu olup olmadığını söyler.
+private struct SidebarCount: View {
+    let count: Int
+    let selected: Bool
+    @Environment(\.backgroundProminence) private var prominence
+
+    var body: some View {
+        Text(verbatim: "\(count)").font(Design.Font.small.weight(.semibold)).monospacedDigit()
+            .foregroundStyle(selected && prominence == .increased ? AnyShapeStyle(Color.white) : AnyShapeStyle(Design.accent))
     }
 }

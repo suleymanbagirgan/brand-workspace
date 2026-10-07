@@ -76,10 +76,17 @@ public struct ReportBuilder: Sendable {
             var completed: [ReportItem] = []
             var deliverables: [ReportItem] = []
             var coveredTaskIds = Set<String>()
+            // Bağlı dosyalar tek sorguda (kayıt başına sorgu yok); sıra `Store.workLogDetail` ile aynı (birincil anahtar sırası).
+            let links = try WorkLogSource.filter(logs.map(\.id).contains(Column("workLogId")))
+                .order(Column("workLogId"), Column("sourceId"), Column("role")).fetchAll(db)
+            let linkedSources = Dictionary(uniqueKeysWithValues: try Source.fetchAll(db, keys: Set(links.map(\.sourceId))).map { ($0.id, $0) })
+            let linksByLog = Dictionary(grouping: links, by: \.workLogId)
             for log in logs {
-                let detail = try Store.workLogDetail(db, log.id)
+                let mine = linksByLog[log.id] ?? []
+                let inputs = mine.filter { $0.role == .input }.compactMap { linkedSources[$0.sourceId] }
+                let outputs = mine.filter { $0.role == .output }.compactMap { linkedSources[$0.sourceId] }
                 var refs = [RecordRef(.workLog, log.id)]
-                refs += detail.inputs.map { RecordRef(.source, $0.id) }
+                refs += inputs.map { RecordRef(.source, $0.id) }
                 if let t = log.taskId { refs.append(RecordRef(.task, t)); coveredTaskIds.insert(t) }
                 var text = log.title
                 if !log.performed.trimmed.isEmpty { text += ": " + log.performed.trimmed }
@@ -88,7 +95,7 @@ public struct ReportBuilder: Sendable {
                     text += " " + LF("Karar: %@", log.decision.trimmed)
                 }
                 completed.append(ReportItem(text: text, refs: refs))
-                for out in detail.outputs where out.archivedAt == nil {
+                for out in outputs where out.archivedAt == nil {
                     deliverables.append(ReportItem(text: out.fileName.map { "\(out.title) (\($0))" } ?? out.title,
                                                    refs: [RecordRef(.source, out.id), RecordRef(.workLog, log.id)]))
                 }
@@ -116,14 +123,17 @@ public struct ReportBuilder: Sendable {
             let total = entries.reduce(0) { $0 + $1.seconds }
             var timeItems: [ReportItem] = []
             let byTask = Dictionary(grouping: entries, by: \.taskId)
+            let timeTasks = Dictionary(uniqueKeysWithValues: try WorkTask.fetchAll(db, keys: Array(byTask.keys)).map { ($0.id, $0) })
             for (taskId, list) in byTask.sorted(by: { $0.value.reduce(0) { $0 + $1.seconds } > $1.value.reduce(0) { $0 + $1.seconds } }) {
                 let secs = list.reduce(0) { $0 + $1.seconds }
-                guard secs > 0, let t = try WorkTask.fetchOne(db, key: taskId) else { continue }
+                guard secs > 0, let t = timeTasks[taskId] else { continue }
                 timeItems.append(ReportItem(text: "\(t.title) — \(DurationFormat.short(secs))",
                                             refs: [RecordRef(.task, taskId)] + list.map { RecordRef(.timeEntry, $0.id) }))
             }
 
-            let nextTasks = try WorkTask.filter(Column("brandId") == brandId).fetchAll(db)
+            // Açık durumlar SQL'de süzülür (biten binlerce görev çözülmez); sonraki süzgeç ve sıra aynı.
+            let openStatuses = TaskStatus.allCases.filter(\.isOpen).map(\.rawValue)
+            let nextTasks = try WorkTask.filter(Column("brandId") == brandId && openStatuses.contains(Column("status"))).fetchAll(db)
                 .filter { $0.status.isOpen && ($0.dueDate.map { $0 <= endDay } ?? ($0.priority >= 2)) }
                 .sorted(by: WorkTask.displayOrder).prefix(8)
                 .map { t in ReportItem(text: t.dueDate.flatMap { DayString.date($0, calendar: calendar) }.map { "\(t.title) — \(dayFormatter.string(from: $0))" } ?? t.title,

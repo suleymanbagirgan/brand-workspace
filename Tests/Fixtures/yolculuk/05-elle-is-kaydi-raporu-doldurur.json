@@ -1,0 +1,13 @@
+{
+  "ad": "elle-is-kaydi-raporu-doldurur",
+  "aciklama": "Yapay zekâ olmadan: marka, kaynak, görev, doğrulanmış iş kaydı ve rapor. Dayanaksız madde olmaz: kayıt yokken rapor boştur.",
+  "adimlar": [
+    { "ad": "Marka aç", "eylem": "markaAc", "etiket": "A", "baslik": "Kuzey Lojistik" },
+    { "ad": "Kayıt yokken rapor maddesiz", "eylem": "raporOlustur", "marka": "A", "bekle": { "raporMadde": 0 } },
+    { "ad": "Kaynak ekle", "eylem": "kaynakEkle", "marka": "A", "etiket": "brif", "baslik": "Müşteri brifi", "metin": "Rota raporu istendi." },
+    { "ad": "Görev ekle", "eylem": "gorevEkle", "marka": "A", "etiket": "rota", "baslik": "Rota raporunu hazırla" },
+    { "ad": "Doğrulanmış iş kaydı yaz", "eylem": "isKaydiYaz", "marka": "A", "baslik": "Rota raporu teslim edildi",
+      "metin": "Rapor hazırlandı ve gönderildi.", "kaynaklar": ["brif"], "gorev": "rota", "bekle": { "isKaydiSayisi": 1 } },
+    { "ad": "Raporda madde görünsün", "eylem": "raporOlustur", "marka": "A", "bekle": { "raporMaddeEnAz": 1 } }
+  ]
+}

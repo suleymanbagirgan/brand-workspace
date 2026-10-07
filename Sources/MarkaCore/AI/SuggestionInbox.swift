@@ -71,6 +71,11 @@ public struct SuggestionDocument: Sendable, Hashable {
         guard let v = root["surum"] as? NSNumber, !isBool(v), v.doubleValue == Double(schemaVersion) else {
             throw MarkaError.validation(L("“surum” alanı eksik ya da desteklenmiyor (beklenen: 1)."))
         }
+        return try body(root)
+    }
+
+    /// Sürüm alanından bağımsız öğe gövdesi (şema 1 ve E-17 şema 2 zarfı aynı öğe kurallarını paylaşır).
+    static func body(_ root: [String: Any]) throws -> SuggestionDocument {
         var doc = SuggestionDocument()
         func list(_ key: String) throws -> [[String: Any]] {
             guard let raw = root[key] else { return [] }
@@ -249,12 +254,15 @@ public struct SuggestionInbox: Sendable {
     public func scan(brandId: String, settle: TimeInterval = 0, now: Date = Date()) -> Result {
         var result = Result()
         guard let dir = try? folders.existingFolder(brandId: brandId) else { return result }
+        // Erişim kapsamı (S3): tarama ve taşıma boyunca açık, her dönüşte kapanır. İzin yoksa tarama yapılmaz.
+        guard folders.access.begin(dir) else { return result }
+        defer { folders.access.end(dir) }
         let inbox = dir.appendingPathComponent(Self.folderName, isDirectory: true)
         var st = stat()
         guard lstat(inbox.path, &st) == 0 else { return result }
         let kind = st.st_mode & S_IFMT
-        let base = SandboxProfile.canonical(dir.path)
-        if kind != S_IFDIR || !SandboxProfile.canonical(inbox.path).hasPrefix(base + "/") {
+        let base = PathCanonical.canonical(dir.path)
+        if kind != S_IFDIR || !PathCanonical.canonical(inbox.path).hasPrefix(base + "/") {
             // `oneriler` başka bir yere (ör. başka markanın klasörüne) giden bağ: hiç okunmaz.
             result.failures.append(Failure(fileName: Self.folderName, message: L("“oneriler” gerçek bir klasör değil (sembolik bağ olabilir); okunmadı."),
                                            fingerprint: "\(brandId)|\(Self.folderName)|\(kind)|\(st.st_mtimespec.tv_sec)",
@@ -383,7 +391,7 @@ public struct SuggestionInbox: Sendable {
         var st = stat()
         if lstat(target.path, &st) != 0 { mkdir(target.path, 0o755) }
         guard lstat(target.path, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR,
-              SandboxProfile.canonical(target.path).hasPrefix(SandboxProfile.canonical(brandDir.path) + "/") else { return false }
+              PathCanonical.canonical(target.path).hasPrefix(PathCanonical.canonical(brandDir.path) + "/") else { return false }
         let name = file.deletingPathExtension().lastPathComponent
         let ext = file.pathExtension
         for candidate in [file.lastPathComponent, "\(name)-\(sha256.prefix(8)).\(ext)", "\(name)-\(newID().prefix(8)).\(ext)"] {

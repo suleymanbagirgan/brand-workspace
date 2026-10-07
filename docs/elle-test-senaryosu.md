@@ -4,7 +4,7 @@
 **Kapsam:** 0.2.1 akışı — tek adımlı ilk açılış, Bugün, onay bandı ve onay sayfası (öneriler + klasördeki yeni dosyalar), terminal oturumunun marka geçişinde yaşaması, Akış, Yapılacaklar, Rapor, Ayarlar (2 sekme). AI hesabı gerekmez; terminal adımında JSON dosyasını elle yazarsın.
 **Nasıl işaretlenir:** Her adımın sonuna ✓ (beklendiği gibi) / ✗ (farklı — ne gördüğünü bir cümleyle yaz) / ? (anlamadım) koy. "?" da kusurdur: metin ya da akış anlaşılmıyordur.
 
-Ekran ve düğme adları koddaki metinlerle birebir aynıdır. Tırnak içindeki adı ekranda arayın. Adımlar henüz tıklanarak denenmedi (README "Bilinen sınırlar"); yalnız terminal oturumunun yaşaması ekran dışı bir pencerede kodla sınandı (`MARKA_TERMINAL_PROVA`). İlk elle uygulama bu senaryonun kendisidir.
+Ekran ve düğme adları koddaki metinlerle birebir aynıdır. Tırnak içindeki adı ekranda arayın. Adımlar henüz tıklanarak denenmedi (README "Bilinen sınırlar"). İlk elle uygulama bu senaryonun kendisidir.
 
 ---
 

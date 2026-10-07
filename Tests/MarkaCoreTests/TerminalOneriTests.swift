@@ -24,8 +24,11 @@ import Testing
         let a = try store.createBrand(name: "Kuzey Lojistik")
         let b = try store.createBrand(name: "Gizli Şirket")
         let folders = BrandFolders(root: base.appendingPathComponent("Marka Çalışma Alanı", isDirectory: true), store: store)
-        let dirA = try folders.writeContextFile(brandId: a.id).deletingLastPathComponent()
-        let dirB = try folders.writeContextFile(brandId: b.id).deletingLastPathComponent()
+        // BAGLAM.md yalnız Codex izniyle yazılır (Y1).
+        try store.setAIProviders(a.id, providers: [.codex])
+        try store.setAIProviders(b.id, providers: [.codex])
+        let dirA = try #require(try folders.writeContextFile(brandId: a.id)).deletingLastPathComponent()
+        let dirB = try #require(try folders.writeContextFile(brandId: b.id)).deletingLastPathComponent()
         return Ortam(store: store, folders: folders, a: a, b: b, dirA: dirA, dirB: dirB)
     }
 

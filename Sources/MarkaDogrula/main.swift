@@ -4,6 +4,7 @@ import MarkaCore
 // Canlı entegrasyon doğrulaması: gerçek sağlayıcılarla sentetik marka verisi.
 // Kullanım: swift run MarkaDogrula codex
 //           ANTHROPIC_API_KEY=… swift run MarkaDogrula anthropic [--model <id>] [--max-tokens <n>]
+//           swift run MarkaDogrula eval [--sahte | --canli] [--cikti <dosya.json>]   (altın istem koşumu; sahte kip ağsız)
 // Gerçek müşteri verisi kullanılmaz; her şey geçici klasörde oluşur.
 
 func log(_ s: String) { print(s); fflush(stdout) }
@@ -253,6 +254,12 @@ func seedDemo(path: String) throws {
     let applied = try store.createProposal(sessionId: nil, brandId: seed.brandA, kind: .createTask, summary: "Yeni görev: Teknik föy PDF'lerini yükle",
                                            payload: ProposalPayload.CreateTask(title: "Teknik föy PDF'lerini yükle", assignee: "Claude"))
     try store.applyProposal(applied.id)
+    // Görev değiştirme önerisi (eylem kaydı, F1): onay sayfasında önce → sonra satırları çizilsin.
+    let due = DayString.from(Calendar.current.date(byAdding: .day, value: 8, to: Date())!)
+    let stand = try store.saveTask(WorkTask(brandId: seed.brandA, title: "Fuar standı teklifini gönder", priority: 2, dueDate: due))
+    let params = try TaskReschedule.postpone(stand, days: 3)
+    try store.createProposal(sessionId: nil, brandId: seed.brandA, kind: .updateTask, summary: "Görevi güncelle: \(stand.title)",
+                             payload: ProposalPayload.UpdateTask(taskId: stand.id, dueDate: params.dueDate, status: .inProgress))
     // Onaylanmış bilgi güncellemesi: Akış'ta "Öneri onaylandı" satırı; ayrıntı panelinden önceki sürüme geri alınır.
     if let page = try store.wikiPages(brandId: seed.brandA).first(where: { $0.title == "Ayşe Demir" }) {
         let v2 = try store.writeWikiRevision(brandId: seed.brandA, pageId: page.id, kind: .person, title: "Ayşe Demir",
@@ -266,6 +273,7 @@ func seedDemo(path: String) throws {
     }
     try zenginDemo(store: store)
     try yogunDemo(store: store)
+    try sirketDemo(store: store)
     log("örnek çalışma alanı hazır: \(path)")
 }
 
@@ -300,8 +308,8 @@ func zenginDemo(store: Store) throws {
     try store.saveRecord(BrandRecord(brandId: a.id, kind: .contract, title: "2026 danışmanlık sözleşmesi", status: .active))
     try store.addTextSource(brandId: a.id, kind: .link, title: "Rakip ürün karşılaştırma sayfası", body: "", url: "https://example.com/karsilastirma")
     let aNote = try store.addTextSource(brandId: a.id, kind: .note, title: "Fuar notları", body: "Ekim fuarında 14 görüşme yapıldı; 5'i teklif istedi.", capturedAt: cal.date(byAdding: .day, value: -4, to: now)!)
-    try store.addGeneratedOutput(brandId: a.id, fileName: "urun-sayfasi-taslagi.md", content: "# Ürün sayfası taslağı\n\nYangın dolabı: 12 kg KKT…", title: "Ürün sayfası taslağı", actor: .ai)
-    try store.addGeneratedOutput(brandId: a.id, fileName: "teklif-sablonu.md", content: "# Teklif şablonu\n\nBirim fiyat, teslim süresi, montaj.", title: "Teklif şablonu", actor: .user)
+    try store.addGeneratedOutput(brandId: a.id, fileName: "Ürün sayfası taslağı.md", content: "# Ürün sayfası taslağı\n\nYangın dolabı: 12 kg KKT…", title: "Ürün sayfası taslağı", capturedAt: ago(30), actor: .ai)
+    try store.addGeneratedOutput(brandId: a.id, fileName: "Teklif şablonu.md", content: "# Teklif şablonu\n\nBirim fiyat, teslim süresi, montaj.", title: "Teklif şablonu", capturedAt: ago(27), actor: .user)
     try store.saveFinanceEntry(FinanceEntry(brandId: a.id, kind: .budget, title: "Teknik föy tasarımı", amountMinor: 650_000, note: "Tasarımcı teklifi bekleniyor"))
     let aLog = try store.saveWorkLog(WorkLog(brandId: a.id, title: "Fuar görüşmeleri özetlendi", requested: "Fuar sonrası takip listesi", performed: "14 görüşme sınıflandırıldı; 5 sıcak potansiyel müşteri belirlendi.", decision: "Sıcak 5 müşteriye 48 saatte teklif", occurredAt: ago(30)), inputSourceIds: [aNote.id], outputSourceIds: [])
     try store.verifyWorkLog(aLog.id, verifiedBy: "Danışman")
@@ -337,8 +345,8 @@ func zenginDemo(store: Store) throws {
     let kMeet = try store.addTextSource(brandId: k.id, kind: .meeting, title: "Operasyon direktörü toplantısı", body: "Kerem Yıldız: soğuk zincir verisi vaka çalışmasında kullanılabilir; müşteri adı için izin gerek.", capturedAt: cal.date(byAdding: .day, value: -3, to: now)!)
     try store.addTextSource(brandId: k.id, kind: .link, title: "Sektör raporu 2026", body: "", url: "https://example.com/sektor-raporu")
     try store.addTextSource(brandId: k.id, kind: .note, title: "Sosyal medya fikirleri", body: "Sürücü portreleri, sabah rotası, sıcaklık grafiği paylaşımı.", capturedAt: cal.date(byAdding: .day, value: -6, to: now)!)
-    try store.addGeneratedOutput(brandId: k.id, fileName: "linkedin-takvimi.md", content: "# LinkedIn takvimi\n\nSalı: vaka\nPerşembe: sektör notu", title: "LinkedIn takvimi", actor: .ai)
-    try store.addGeneratedOutput(brandId: k.id, fileName: "vaka-iskeleti.md", content: "# Vaka iskeleti\n\nSorun, çözüm, sonuç.", title: "Vaka çalışması iskeleti", actor: .user)
+    try store.addGeneratedOutput(brandId: k.id, fileName: "LinkedIn takvimi.md", content: "# LinkedIn takvimi\n\nSalı: vaka\nPerşembe: sektör notu", title: "LinkedIn takvimi", capturedAt: ago(52), actor: .ai)
+    try store.addGeneratedOutput(brandId: k.id, fileName: "Vaka iskeleti.md", content: "# Vaka iskeleti\n\nSorun, çözüm, sonuç.", title: "Vaka çalışması iskeleti", capturedAt: ago(49), actor: .user)
     for (title, amt, date, st) in [("Eylül danışmanlık hizmeti", 3_200_000 as Int64, "2026-09-10", PaymentStatus.collected), ("Ekim danışmanlık hizmeti", 3_200_000, "2026-10-10", .pending), ("Kasım danışmanlık hizmeti", 3_200_000, "2026-11-10", .planned)] {
         try store.saveFinanceEntry(FinanceEntry(brandId: k.id, kind: .payment, title: title, amountMinor: amt, date: date, status: st))
     }
@@ -382,8 +390,8 @@ func zenginDemo(store: Store) throws {
     try store.saveRecord(BrandRecord(brandId: o.id, kind: .milestone, title: "Sonbahar menüsü satışta", dueDate: day(10)))
     try store.addTextSource(brandId: o.id, kind: .link, title: "Menü tasarım klasörü", body: "", url: "https://example.com/menu")
     let oNote = try store.addTextSource(brandId: o.id, kind: .note, title: "Barista röportaj notları", body: "Baran: yeni sonbahar içeceği için tarçınlı şurup; müşteriler sıcak ve tatlıya yöneliyor.", capturedAt: cal.date(byAdding: .day, value: -2, to: now)!)
-    try store.addGeneratedOutput(brandId: o.id, fileName: "lansman-takvimi.md", content: "# Lansman takvimi\n\nPazartesi: teaser\nÇarşamba: reels", title: "Lansman takvimi", actor: .ai)
-    try store.addGeneratedOutput(brandId: o.id, fileName: "menu-metinleri.md", content: "# Menü metinleri\n\nTarçınlı latte: …", title: "Menü metinleri", actor: .user)
+    try store.addGeneratedOutput(brandId: o.id, fileName: "Lansman takvimi.md", content: "# Lansman takvimi\n\nPazartesi: teaser\nÇarşamba: reels", title: "Lansman takvimi", capturedAt: ago(76), actor: .ai)
+    try store.addGeneratedOutput(brandId: o.id, fileName: "Menü metinleri.md", content: "# Menü metinleri\n\nTarçınlı latte: …", title: "Menü metinleri", capturedAt: ago(73), actor: .user)
     for (title, amt, date, st) in [("Eylül içerik hizmeti", 2_400_000 as Int64, "2026-09-08", PaymentStatus.collected), ("Ekim içerik hizmeti", 2_400_000, "2026-10-08", .pending), ("Kasım içerik hizmeti", 2_400_000, "2026-11-08", .planned)] {
         try store.saveFinanceEntry(FinanceEntry(brandId: o.id, kind: .payment, title: title, amountMinor: amt, date: date, status: st))
     }
@@ -448,7 +456,7 @@ func seedDemo(store: Store) throws -> DemoSeed {
     try store.addManualTime(taskId: t1.id, seconds: 2700, endingAt: cal.date(byAdding: .hour, value: -3, to: now)!)
     t3.status = .done
     t3 = try store.saveTask(t3)
-    let out = try store.addGeneratedOutput(brandId: a.id, fileName: "rakip-fiyatlari.md", content: "# Rakip fiyatları\n\n- A firması: …", title: "Rakip fiyat tablosu", actor: .user)
+    let out = try store.addGeneratedOutput(brandId: a.id, fileName: "Rakip fiyatları.md", content: "# Rakip fiyatları\n\n- A firması: …", title: "Rakip fiyat tablosu", actor: .user)
     let log1 = try store.saveWorkLog(WorkLog(brandId: a.id, taskId: t3.id, title: "Rakip fiyat araştırması", requested: "Teklif öncesi piyasa fiyatları",
         performed: "3 rakibin liste fiyatları derlendi", decision: "Teklif piyasa ortalamasının %5 altında", approvedBy: "Ayşe Demir",
         clientNotified: "Fiyat aralığı telefonda paylaşıldı", occurredAt: cal.date(byAdding: .hour, value: -20, to: now)!),
@@ -491,7 +499,7 @@ func yogunDemo(store: Store) throws {
                      "Eğitim videosu senaryosu", "Katalog sayfa düzenini onayla", "LinkedIn gönderisi hazırla", "Teklif şablonunu revize et", "Müşteri referans metni topla", "Sertifika görsellerini düzenle",
                      "Bayi hoş geldin paketi", "Saha ziyareti raporu", "Fiyat listesi PDF'i", "Web sitesi SSS bölümü", "Basın bülteni taslağı", "Tesis tanıtım metni", "Kampanya afişi metni", "Yıl sonu raporu taslağı"],
              notes: ["Müşteri toplantısı notları", "Fuar gözlemleri", "Bayi geri bildirimleri", "Rakip analizi notları", "Satış ekibi sorularının özeti", "Kampanya fikirleri"],
-             meetings: ["Aylık değerlendirme toplantısı", "Bayi görüşmesi", "Satış ekibi toplantısı", "Genel müdür sunumu"], files: ["fuar-brosur-taslagi", "fiyat-listesi", "katalog-ozet", "bayi-sunumu", "egitim-senaryosu", "kampanya-plani", "sertifika-listesi", "musteri-referanslari"],
+             meetings: ["Aylık değerlendirme toplantısı", "Bayi görüşmesi", "Satış ekibi toplantısı", "Genel müdür sunumu"], files: ["Fuar broşürü taslağı", "Fiyat listesi", "Katalog özeti", "Bayi sunumu", "Eğitim senaryosu", "Kampanya planı", "Sertifika listesi", "Müşteri referansları"],
              links: [("Sektör fuarı sayfası", "https://example.com/fuar"), ("Standart belgeleri", "https://example.com/standartlar"), ("Rakip karşılaştırma tablosu", "https://example.com/rakipler")],
              payment: ("danışmanlık hizmeti", 4_500_000), budgets: [("Fuar standı tasarımı", 2_400_000), ("Katalog baskısı", 1_800_000), ("Eğitim videosu çekimi", 3_000_000)],
              people: ["Murat Kaya", "Elif Aksoy", "Ayşe Demir"], doneNotes: ["Tamamlandı, müşteri onayladı", "Gönderildi", "Revize edildi"]),
@@ -499,7 +507,7 @@ func yogunDemo(store: Store) throws {
              tasks: ["Vaka çalışması röportajı", "LinkedIn gönderi takvimi", "Soğuk zincir infografiği", "Sürücü portre çekimi", "Müşteri memnuniyet anketi", "Haftalık bülten metni", "Filo tanıtım videosu",
                      "Teslimat oranı raporu görseli", "Basın bülteni", "Sektör raporu özeti", "Web sitesi hizmetler sayfası", "Teklif sunumu güncellemesi", "Depo tanıtım fotoğrafları", "Etkinlik daveti metni"],
              notes: ["Operasyon toplantısı notları", "Müşteri geri bildirimleri", "Sosyal medya analitiği", "Sektör haberleri özeti"],
-             meetings: ["Operasyon direktörü toplantısı", "Satış ekibi görüşmesi", "Aylık içerik toplantısı"], files: ["vaka-calismasi-1", "linkedin-takvimi", "infografik-taslagi", "surucu-roportaji", "bulten-sablonu", "teklif-sunumu"],
+             meetings: ["Operasyon direktörü toplantısı", "Satış ekibi görüşmesi", "Aylık içerik toplantısı"], files: ["Vaka çalışması 1", "LinkedIn takvimi", "İnfografik taslağı", "Sürücü röportajı", "Bülten şablonu", "Teklif sunumu"],
              links: [("Sektör raporu", "https://example.com/sektor"), ("LinkedIn analitiği", "https://example.com/analitik")],
              payment: ("danışmanlık hizmeti", 3_200_000), budgets: [("Video çekimi", 1_500_000), ("LinkedIn reklam denemesi", 800_000)],
              people: ["Kerem Yıldız", "Seda Polat"], doneNotes: ["Yayınlandı", "Onaylandı", "Müşteriye iletildi"]),
@@ -507,7 +515,7 @@ func yogunDemo(store: Store) throws {
              tasks: ["Instagram reels kurgusu", "Menü fotoğraf çekimi", "Hikâye şablonları", "Sadakat kartı metinleri", "Barista röportajı", "Haftalık gönderi planı", "Şube açılış davetiyesi",
                      "Kış içecekleri isimlendirme", "Müşteri yorumları özeti", "Influencer listesi", "Poster metinleri", "E-posta bülteni", "Kampanya görselleri", "Lansman basın notu"],
              notes: ["Barista geri bildirimleri", "Müşteri yorumları", "Sosyal medya fikirleri", "Şube ziyareti notları"],
-             meetings: ["Marka müdürü toplantısı", "Şube müdürleri görüşmesi", "İçerik planı toplantısı"], files: ["menu-metinleri", "lansman-takvimi", "sadakat-brosuru", "hikaye-sablonlari", "kampanya-ozeti", "influencer-listesi"],
+             meetings: ["Marka müdürü toplantısı", "Şube müdürleri görüşmesi", "İçerik planı toplantısı"], files: ["Menü metinleri", "Lansman takvimi", "Sadakat broşürü", "Hikâye şablonları", "Kampanya özeti", "Influencer listesi"],
              links: [("Menü tasarım klasörü", "https://example.com/menu"), ("Instagram analitiği", "https://example.com/insta")],
              payment: ("içerik hizmeti", 2_400_000), budgets: [("Menü fotoğraf çekimi", 750_000), ("Influencer paketi", 1_500_000)],
              people: ["Deniz Çelik", "Baran Tunç"], doneNotes: ["Paylaşıldı", "Onaylandı", "Yayına alındı"]),
@@ -564,14 +572,14 @@ func yogunDemo(store: Store) throws {
         // Notlar, görüşmeler, bağlantılar, dosyalar (geçmişe yayılmış)
         for i in 0..<(plan.months * 3) {
             try store.addTextSource(brandId: brand.id, kind: .note, title: plan.notes[i % plan.notes.count] + (i >= plan.notes.count ? " \(i / plan.notes.count + 1)" : ""),
-                                    body: "Önemli noktalar: öncelikler netleşti, bir sonraki adım için sorumlu belirlendi, müşteri geri dönüşü bekleniyor.", capturedAt: date(daysAgo: span - i * span / (plan.months * 3) - 1))
+                                    body: "Önemli noktalar: öncelikler netleşti, bir sonraki adım için sorumlu belirlendi, müşteri geri dönüşü bekleniyor.", capturedAt: date(daysAgo: span - i * span / (plan.months * 3) - 1, hour: 9 + (i * 5) % 8))
         }
         for i in 0..<(plan.months * 2) {
-            try store.addTextSource(brandId: brand.id, kind: .meeting, title: plan.meetings[i % plan.meetings.count] + " · \(i + 1)", body: "Gündem: ilerleme, engeller, sonraki ay planı. Kararlar not edildi.", capturedAt: date(daysAgo: span - i * span / (plan.months * 2) - 2, hour: 14))
+            try store.addTextSource(brandId: brand.id, kind: .meeting, title: plan.meetings[i % plan.meetings.count] + " · \(i + 1)", body: "Gündem: ilerleme, engeller, sonraki ay planı. Kararlar not edildi.", capturedAt: date(daysAgo: span - i * span / (plan.months * 2) - 2, hour: 12 + (i * 3) % 7))
         }
-        for link in plan.links { try store.addTextSource(brandId: brand.id, kind: .link, title: link.0, body: "", url: link.1) }
+        for (i, link) in plan.links.enumerated() { try store.addTextSource(brandId: brand.id, kind: .link, title: link.0, body: "", url: link.1, capturedAt: date(daysAgo: 1 + i * 3, hour: 10 + i * 2)) }
         for (i, file) in plan.files.enumerated() {
-            _ = try? store.addGeneratedOutput(brandId: brand.id, fileName: file + ".md", content: "# \(file.replacingOccurrences(of: "-", with: " ").capitalized)\n\nTaslak içerik, \(plan.brand) için hazırlandı.\n\n- Madde bir\n- Madde iki\n- Madde üç", title: file.replacingOccurrences(of: "-", with: " ").capitalized, actor: i % 2 == 0 ? .ai : .user)
+            _ = try? store.addGeneratedOutput(brandId: brand.id, fileName: file + ".md", content: "# \(file)\n\nTaslak içerik, \(plan.brand) için hazırlandı.\n\n- Madde bir\n- Madde iki\n- Madde üç", title: file, capturedAt: date(daysAgo: i % 5, hour: 9 + (i * 3) % 9), actor: i % 2 == 0 ? .ai : .user)
         }
         // Kayıtlar: kapanmış ve açık
         for (i, kind) in [BrandRecordKind.promise, .decision, .milestone, .request, .promise, .decision, .milestone, .request].enumerated() {
@@ -972,6 +980,49 @@ func runAnthropic(arguments: [String]) async -> Int32 {
     return exitCode.rawValue
 }
 
+/// `eval [--sahte | --canli] [--cikti <dosya.json>]`: altın istem koşumu (H3-02). Sahte kip senaryoları iki kez koşar, sonuçları
+/// (süre maskelenerek) karşılaştırır, JSON raporu stdout'a (ve isteğe bağlı dosyaya), özeti stderr'e yazar.
+/// Çıkış: 0 = tüm senaryolar GEÇTİ ve iki koşu aynı · 1 = KALDI ya da determinizm bozuk · 2 = canlı kip doğrulanamadı / kullanım hatası.
+/// Canlı kip anahtarı ARAMAZ, Keychain taramaz: yalnız `ANTHROPIC_API_KEY` zaten verilmişse ilerler (iskelet: henüz koşmaz).
+func runEval(arguments: [String]) async -> Int32 {
+    func err(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
+    var canli = false
+    var cikti: String?
+    var i = 0
+    while i < arguments.count {
+        switch arguments[i] {
+        case "--sahte": canli = false
+        case "--canli": canli = true
+        case "--cikti":
+            guard i + 1 < arguments.count else { err("--cikti bir dosya yolu ister"); return 2 }
+            cikti = arguments[i + 1]; i += 1
+        case "-h", "--help", "yardim":
+            err("Kullanım: swift run MarkaDogrula eval [--sahte | --canli] [--cikti <dosya.json>]")
+            return 0
+        default: err("bilinmeyen bayrak: \(arguments[i])"); return 2
+        }
+        i += 1
+    }
+    if canli {
+        let anahtar = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? ""
+        guard !anahtar.isEmpty else { log("doğrulanamadı: anahtar yok"); return 2 }
+        log("doğrulanamadı: canlı altın istem koşusu bu iskelette henüz uygulanmadı (yapılmadı)")
+        return 2
+    }
+    let birinci = await AltinIstemKosucu.kosSahte()
+    let ikinci = await AltinIstemKosucu.kosSahte()
+    let ayni = (try? birinci.json(maskele: true)) == (try? ikinci.json(maskele: true))
+    guard let data = try? birinci.json() else { err("JSON yazılamadı"); return 1 }
+    log(String(decoding: data, as: UTF8.self))
+    if let cikti {
+        do { try data.write(to: URL(fileURLWithPath: cikti)) } catch { err("çıktı dosyası yazılamadı: \(cikti)"); return 1 }
+    }
+    for s in birinci.sonuclar where !s.gectiMi { err("✗ \(s.senaryo): \(s.neden)") }
+    err("eval (sahte): \(birinci.toplam) senaryo · \(birinci.gecen) GEÇTİ · \(birinci.kalan) KALDI · determinizm: \(ayni ? "iki koşu aynı" : "İKİ KOŞU FARKLI")")
+    err("Not: sahte kip araç yürütücüsünü, marka yalıtımını ve öneri kutusunu sınar; modelin gerçek davranışını ölçmez.")
+    return birinci.kalan == 0 && ayni ? 0 : 1
+}
+
 let mode = CommandLine.arguments.dropFirst().first ?? "codex"
 let done = DispatchSemaphore(value: 0)
 Task { @MainActor in
@@ -982,7 +1033,21 @@ Task { @MainActor in
             let code = await runAnthropic(arguments: Array(CommandLine.arguments.dropFirst(2)))
             fflush(stdout)
             exit(code)
+        case "eval":
+            let code = await runEval(arguments: Array(CommandLine.arguments.dropFirst(2)))
+            fflush(stdout)
+            exit(code)
+        case "gocu": try migrationCheck(path: CommandLine.arguments[2])
         case "demo": try seedDemo(path: CommandLine.arguments[2])
+        case "ornek":
+            // `ornek <çalışma alanı>`: (geçici) çalışma alanında örnek markayı oluşturur ya da var olanı döndürür (uydurma veri).
+            let url = URL(fileURLWithPath: CommandLine.arguments[2]).standardizedFileURL.resolvingSymlinksInPath()
+            let real = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/MarkaCalismaAlani").resolvingSymlinksInPath().path
+            guard !url.path.hasPrefix(real) else { log("Gerçek veri alanına örnek marka yazılmaz; geçici klasör ver."); exit(1) }
+            let store = Store(database: try AppDatabase.open(at: url))
+            let b = try store.createSampleBrand()
+            try store.setSetting("onboarded", ISO8601DateFormatter().string(from: Date()))
+            log("örnek marka: \(b.name) · görev \(try store.tasks(brandId: b.id).count) · doğrulanmış iş kaydı \(try store.workLogs(brandId: b.id, statuses: [.verified]).count)")
         case "profil-yaz":
             // `profil-yaz <çalışma alanı> <marka> <bölüm anahtarı> <metin dosyası>`: marka profili bölümünü yazar (aktör: AI).
             let a = CommandLine.arguments
@@ -1062,3 +1127,128 @@ Task { @MainActor in
 }
 while done.wait(timeout: .now() + 0.05) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
 exit(exitCode)
+
+/// Demo için Stüdyo (kendi şirketimiz): uydurma bir yazılım ve tasarım stüdyosu; kendi işleri (web sitesi, reklam, satış hattı, ekip),
+/// hizmetleri, insan ve yapay zekâ ekibi, yetenekleri ve müşteri ekipleri. Gerçek kişi/şirketle ilgisi yok.
+func sirketDemo(store: Store) throws {
+    let cal = StatusService.turkishCalendar
+    func ago(_ months: Int) -> String { DayString.from(cal.date(byAdding: .month, value: -months, to: Date())!) }
+    func day(_ o: Int) -> String { DayString.from(cal.date(byAdding: .day, value: o, to: Date())!) }
+    let own = try store.createBrand(name: "Nova Stüdyo", summary: "Yazılım ve tasarım stüdyosu: ürün tasarımı, web ve mobil geliştirme, marka kimliği.", sector: "Yazılım ve tasarım", isOwn: true)
+    try store.setAIProviders(own.id, providers: [.anthropic])
+    _ = try store.saveCompanyProfile(CompanyProfile(
+        name: "Nova Stüdyo", tagline: "Sade ürünler, sakin ekipler.",
+        about: "Nova Stüdyo, küçük ve orta ölçekli markalar için ürün tasarımı, web ve mobil uygulama geliştirme ve marka kimliği işleri yapan bir yazılım ve tasarım stüdyosudur. İşi insanlar yönetir; tekrar eden hazırlık, inceleme ve araştırma işlerini yapay zekâ çalışanlar öneri olarak üretir, kararı insan verir.",
+        mission: "Her müşterinin ne yapıldığını, ne beklediğini ve sıradaki işi bir bakışta görmesini sağlamak.",
+        foundedOn: ago(30), website: "https://novastudyo.example"))
+    for (name, summary, status, months) in [
+        ("Ürün ve arayüz tasarımı", "Araştırma, akışlar, arayüz ve tasarım sistemi.", ServiceStatus.active, 30),
+        ("Web ve mobil uygulama geliştirme", "Tasarımdan yayına; test ve bakım notuyla teslim.", .active, 28),
+        ("Marka kimliği", "Logo, renk, tipografi ve kullanım rehberi.", .active, 22),
+        ("Yapay zekâ entegrasyonu", "Mevcut ürüne onaylı, geri alınabilir yapay zekâ özellikleri.", .active, 9),
+        ("Bakım ve destek", "Aylık güncelleme, izleme ve küçük geliştirmeler.", .active, 18),
+        ("Ekip atölyeleri", "Müşteri ekipleri için yarım günlük uygulamalı eğitim.", .planned, 0),
+    ] {
+        _ = try store.saveService(ServiceOffering(name: name, summary: summary, details: summary, status: status, startedOn: months > 0 ? ago(months) : nil))
+    }
+    for pack in SkillPacks.all { try store.installSkillPack(pack) }
+    func human(_ name: String, _ title: String, _ level: MemberLevel, _ dept: String, boss: TeamMember? = nil, months: Int, bio: String) throws -> TeamMember {
+        try store.saveTeamMember(TeamMember(kind: .human, name: name, title: title, level: level, department: dept, reportsToId: boss?.id,
+                                            bio: bio, startedOn: ago(months)))
+    }
+    func ai(_ name: String, _ title: String, _ level: MemberLevel, _ dept: String, boss: TeamMember, provider: String, model: String,
+            charter: String, skills: [String], months: Int) throws -> TeamMember {
+        try store.saveTeamMember(TeamMember(kind: .ai, name: name, title: title, level: level, department: dept, reportsToId: boss.id,
+                                            startedOn: ago(months), provider: provider, model: model, charter: charter, skills: skills))
+    }
+    let aylin = try human("Aylin Demir", "Kurucu ve ürün direktörü", .director, "Yönetim", months: 30, bio: "Strateji, müşteri ilişkileri ve tüm onayların son sahibi.")
+    let mert = try human("Mert Kaya", "Tasarım lideri", .lead, "Tasarım", boss: aylin, months: 28, bio: "Marka kimliği ve arayüz sistemi.")
+    let selin = try human("Selin Arslan", "Kıdemli yazılım mühendisi", .senior, "Mühendislik", boss: aylin, months: 24, bio: "Mimari ve kod incelemesi.")
+    let can = try human("Can Yıldız", "Proje koordinatörü", .junior, "Operasyon", boss: aylin, months: 8, bio: "Takvim, teslimler ve müşteri yazışmaları.")
+    _ = try human("Deniz Acar", "Arayüz tasarımcısı", .junior, "Tasarım", boss: mert, months: 5, bio: "Ekranlar ve bileşenler.")
+    let code = try ai("Claude Code", "Kıdemli yazılım mühendisi", .senior, "Mühendislik", boss: selin, provider: "anthropic", model: "claude-opus-5-5",
+                      charter: "Web ve mobil işlerinde kod yazar ve inceler. Değişikliği doğrudan uygulamaz; yapılacak işi önerir, onayı Selin ya da Aylin verir.",
+                      skills: ["kod-incelemesi", "test-plani", "once-plan-sonra-oner"], months: 12)
+    _ = try ai("Kod Gözden Geçirici", "Kod inceleme mühendisi", .mid, "Mühendislik", boss: selin, provider: "anthropic", model: "claude-opus-5-5",
+               charter: "Birleştirmeden önce değişiklikleri doğruluk ve güvenlik açısından inceler; bulguları önem sırasıyla yazar.",
+               skills: ["kod-incelemesi", "erisilebilirlik-denetimi"], months: 7)
+    let yazar = try ai("Claude Sonnet", "Arayüz metni ve içerik yazarı", .mid, "Tasarım", boss: mert, provider: "anthropic", model: "claude-sonnet-5-5",
+                       charter: "Arayüz metinlerini, blog yazılarını ve teklif taslaklarını yazar. İnsan okumadan müşteriye gitmez.",
+                       skills: ["arayuz-metni", "metin-yazarligi", "seo-denetimi"], months: 10)
+    let arastirma = try ai("Claude Haiku", "Araştırma asistanı", .junior, "Operasyon", boss: can, provider: "anthropic", model: "claude-haiku-4-5-20251001",
+                           charter: "Hızlı kaynak taraması ve not çıkarımı yapar. Kaynak göstermediği hiçbir bilgiyi yazmaz.",
+                           skills: ["kaynakli-arastirma", "musteri-gorusmesi-hazirligi"], months: 6)
+    let tasarim = try ai("Tasarım Asistanı", "Tasarım yardımcısı", .junior, "Tasarım", boss: mert, provider: "anthropic", model: "claude-sonnet-5-5",
+                         charter: "Mert’in verdiği çerçevede renk ve yerleşim önerileri sunar; son kararı Mert verir.",
+                         skills: ["erisilebilirlik-denetimi", "arayuz-metni"], months: 5)
+    _ = try ai("Not Özetleyici", "Toplantı notu stajyeri", .intern, "Operasyon", boss: can, provider: "apple", model: "",
+               charter: "Toplantı notlarını cihaz üstünde özetler; içerik üçüncü tarafa gitmez.", skills: ["Özet"], months: 2)
+
+    // Stüdyo'nun kendi işleri: web sitesi, reklam, satış hattı, ekip.
+    func project(_ name: String, _ goal: String, due: Int) throws -> Project {
+        try store.saveProject(Project(brandId: own.id, name: name, goal: goal, dueDate: day(due)))
+        return try store.projects(brandId: own.id).first { $0.name == name }!
+    }
+    let web = try project("Web sitesi ve portfolyo", "Biten işleri sürekli yayına almak, siteyi hızlı ve güncel tutmak", due: 30)
+    let ads = try project("Reklam ve büyüme", "Ayda nitelikli başvuru sayısını artırmak", due: 45)
+    let sales = try project("Satış hattı", "Yeni müşterilerle görüşmek, teklif vermek, yenilemeleri kaçırmamak", due: 20)
+    let team = try project("Ekip ve süreçler", "Ekibi ve yapay zekâ çalışanları düzenli, ölçülebilir çalıştırmak", due: 60)
+    for (title, st, pr, due, proj, who) in [
+        ("Biten projeleri portfolyoya ekle (vaka sayfası)", TaskStatus.todo, 2, 5, web.id, "Mert"),
+        ("Ana sayfa hızını iyileştir", .inProgress, 2, 10, web.id, "Claude Code"),
+        ("Blog: bu ayın yazısını yayınla", .todo, 1, 7, web.id, "Claude Sonnet"),
+        ("Aylık reklam bütçesini belirle", .todo, 2, 3, ads.id, "Aylin"),
+        ("LinkedIn reklam metinlerini hazırla", .waiting, 1, 8, ads.id, "Claude Sonnet"),
+        ("Reklam sonuçlarını raporla", .todo, 0, 14, ads.id, "Can"),
+        ("Kuzey Lojistik yenileme görüşmesi", .inProgress, 3, 2, sales.id, "Aylin"),
+        ("Yeni potansiyel müşteri: tanışma görüşmesi", .todo, 2, 4, sales.id, "Aylin"),
+        ("Teklif şablonunu güncelle", .todo, 1, 9, sales.id, "Can"),
+        ("Yapay zekâ çalışanlar için yetenek paketini gözden geçir", .todo, 1, 6, team.id, "Selin"),
+        ("Haftalık ekip toplantısı notlarını işle", .todo, 1, 1, team.id, "Can"),
+    ] as [(String, TaskStatus, Int, Int, String, String)] {
+        try store.saveTask(WorkTask(brandId: own.id, projectId: proj, title: title, assignee: who, priority: pr, dueDate: day(due), status: st))
+    }
+    var g1 = try store.saveRecord(BrandRecord(brandId: own.id, kind: .goal, title: "Ayda üç yeni müşteri görüşmesi", detail: "Reklam, tavsiye ve web sitesinden gelen taleplerle.", dueDate: day(30)))
+    g1.projectId = sales.id; try store.saveRecord(g1)
+    var g2 = try store.saveRecord(BrandRecord(brandId: own.id, kind: .goal, title: "Web sitesinden gelen talebi ikiye katla", detail: "Vaka sayfaları ve hızlı açılış.", dueDate: day(45)))
+    g2.projectId = web.id; try store.saveRecord(g2)
+    try store.saveRecord(BrandRecord(brandId: own.id, kind: .milestone, title: "Yeni portfolyo yayında", dueDate: day(21)))
+    try store.saveFinanceEntry(FinanceEntry(brandId: own.id, kind: .budget, title: "Reklam bütçesi (bu ay)", amountMinor: 1_500_000, note: "LinkedIn ve arama reklamı"))
+    try store.saveFinanceEntry(FinanceEntry(brandId: own.id, kind: .budget, title: "Web barındırma ve alan adı", amountMinor: 240_000))
+    try store.saveFinanceEntry(FinanceEntry(brandId: own.id, kind: .budget, title: "Tasarım ve geliştirme araçları", amountMinor: 380_000))
+    try store.addTextSource(brandId: own.id, kind: .meeting, title: "Haftalık ekip toplantısı", body: "Portfolyo için üç vaka seçildi. Reklam bütçesi Cuma günü kesinleşecek. Claude Code ana sayfa hızını inceleyecek.")
+
+    // Müşteri ekipleri.
+    let brands = try store.brands()
+    func b(_ name: String) -> Brand? { brands.first { $0.name == name } }
+    if let yangin = b("Deneme Yangın") {
+        try store.assignMember(aylin.id, to: yangin.id, role: .lead)
+        for m in [mert, code, yazar] { try store.assignMember(m.id, to: yangin.id) }
+    }
+    if let lojistik = b("Kuzey Lojistik") {
+        try store.assignMember(selin.id, to: lojistik.id, role: .lead)
+        for m in [code, arastirma, can] { try store.assignMember(m.id, to: lojistik.id) }
+    }
+    if let kafe = b("Örnek Kafe Zinciri") {
+        try store.assignMember(mert.id, to: kafe.id, role: .lead)
+        for m in [tasarim, yazar, can] { try store.assignMember(m.id, to: kafe.id) }
+    }
+}
+
+/// `gocu <kopya klasörü>`: içinde workspace.sqlite olan KOPYA klasörünü açar (bekleyen migration'lar çalışır), bütünlük ve tablo sayılarını yazar.
+/// Güvenlik: varsayılan veri alanındaki dosyayı açmayı reddeder; yalnız KOPYA üzerinde çalıştır.
+func migrationCheck(path: String) throws {
+    let url = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+    let real = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/MarkaCalismaAlani").resolvingSymlinksInPath().path
+    guard !url.path.hasPrefix(real) else { fatalError("Gerçek veri alanı açılmaz; önce bir kopya al.") }
+    guard FileManager.default.fileExists(atPath: url.appendingPathComponent("workspace.sqlite").path) else { fatalError("Klasörde workspace.sqlite yok: \(url.path)") }
+    let store = Store(database: try AppDatabase.open(at: url))
+    let applied = try store.read { db in try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid") }
+    print("uygulanan migration: \(applied.joined(separator: ", "))")
+    print("bütünlük: \(try store.read { db in try String.fetchAll(db, sql: "PRAGMA integrity_check").joined(separator: ";") })")
+    print("yabancı anahtar ihlali: \(try store.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM pragma_foreign_key_check") ?? -1 })")
+    for t in ["brand", "workTask", "source", "workLog", "financeEntry", "aiSession", "aiProposal", "company", "teamMember", "skill", "brandAssignment"] {
+        let n = try store.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(t)") ?? -1 }
+        print("  \(t): \(n)")
+    }
+}

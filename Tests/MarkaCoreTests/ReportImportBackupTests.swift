@@ -238,7 +238,7 @@ import Testing
         let store = try makeStore()
         let b = try store.createBrand(name: "Dış/Aktar")
         try store.addGeneratedOutput(brandId: b.id, fileName: "rapor.md", content: "# x", title: "Rapor", actor: .user)
-        let out = try BackupService(workspace: try tempDir()).exportBrand(b.id, store: store, to: try tempDir("exp"))
+        let out = try BackupService(workspace: try tempDir()).exportBrand(b.id, store: store, to: try tempDir("exp")).folder
         let json = try String(contentsOf: out.appendingPathComponent("veri.json"), encoding: .utf8)
         #expect(json.contains("Dış/Aktar"))
         #expect(try FileManager.default.contentsOfDirectory(atPath: out.appendingPathComponent("dosyalar").path).count == 1)

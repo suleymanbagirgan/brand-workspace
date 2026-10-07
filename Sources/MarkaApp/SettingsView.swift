@@ -25,7 +25,7 @@ struct SettingsSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Space.s) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title).font(Design.Font.section).accessibilityAddTraits(.isHeader)
+                Text(title).font(Design.Font.body.weight(.bold)).accessibilityAddTraits(.isHeader)
                 Spacer()
                 if let action, let perform {
                     Button(action, action: perform).buttonStyle(.text)
@@ -76,13 +76,23 @@ struct GeneralSettings: View {
     @State private var keyStatus = ""
     @State private var waitingLogin = false
     @State private var loginPoll: Task<Void, Never>?
+    #if !MAS
+    @State private var localAddress = ""
+    @State private var localName = ""
+    @State private var localStatus = ""
+    @State private var localTesting = false
+    #endif
 
     var body: some View {
         PageScroll {
             VStack(alignment: .leading, spacing: Design.Space.l) {
                 claude
+                #if !MAS
                 codex
-                terminal
+                localModelSection
+                #endif
+                appleModelSection   // E-25
+                responseLengthSection
                 menuBar
                 timerSection
                 appearanceSection
@@ -90,11 +100,34 @@ struct GeneralSettings: View {
             .padding(Design.Space.l)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        #if !MAS
         .task {
             // Ekran çizimi Codex sürecini başlatmaz.
             if !isSnapshot { await app.refreshCodexStatus() }
         }
+        #endif
         .onDisappear { loginPoll?.cancel() }
+    }
+
+    // MARK: Apple Intelligence (E-25)
+
+    private var appleModelSection: some View {
+        SettingsSection(title: "Apple Intelligence") {
+            Text(app.appleModelStatus.statusText).fixedSize(horizontal: false, vertical: true)
+            Text(L("Apple'ın bu Mac'teki cihaz üstü modeli; anahtar gerekmez. Marka izin kartında ayrı bir onay olarak görünür ve varsayılan olarak kapalıdır. Bağlam penceresi küçüktür; uzun konuşmalar kısaltılır. İlk sürümde araç kullanmaz, öneri üretmez."))
+                .captionStyle().fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var responseLengthSection: some View {
+        SettingsSection(title: L("Yanıt uzunluğu")) {
+            Picker(L("Yanıt uzunluğu"), selection: Binding(get: { app.responseLength }, set: { app.responseLength = $0 })) {
+                ForEach(ResponseLength.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented).labelsHidden()
+            Text(L("“Kısa” asistandan daha kısa yanıt ister; Anthropic'te yanıt uzunluğuna da üst sınır koyar. Maliyete etkisi ölçülmedi."))
+                .captionStyle().fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var timerSection: some View {
@@ -121,7 +154,7 @@ struct GeneralSettings: View {
     private var menuBar: some View {
         SettingsSection(title: L("Menü çubuğu")) {
             Toggle(L("Menü çubuğunda göster"), isOn: Binding(get: { app.showMenuBarExtra }, set: { app.showMenuBarExtra = $0 }))
-            Text(L("Bekleyen onay sayısını uygulamayı açmadan görürsün. Açıkken pencereyi kapatsan da uygulama çalışmaya devam eder (terminal oturumları dahil)."))
+            Text(L("Bekleyen onay sayısını uygulamayı açmadan görürsün. Açıkken pencereyi kapatsan da uygulama çalışmaya devam eder."))
                 .captionStyle().fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -151,46 +184,7 @@ struct GeneralSettings: View {
                 }
             }
             if !keyStatus.isEmpty { Text(keyStatus).captionStyle().fixedSize(horizontal: false, vertical: true) }
-            Text(L("Yalnız rapor özetinde, izin verdiğin markalarda kullanılır. Anahtar Keychain'de durur; kullanım başına ücretlidir."))
-                .captionStyle().fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var codex: some View {
-        SettingsSection(title: "Codex") {
-            HStack(alignment: .firstTextBaseline, spacing: Design.Space.m) {
-                Text(codexStatusText).lineLimit(2)
-                Spacer()
-                // Tek düğme: girişe göre "Giriş yap" ya da "Çıkış yap".
-                Button(app.codexAccount == nil ? L("Giriş yap") : L("Çıkış yap")) {
-                    if app.codexAccount == nil { login() } else { logout() }
-                }
-                .buttonStyle(.text)
-                .disabled(waitingLogin)
-            }
-            if waitingLogin {
-                Text(L("Tarayıcıda girişi tamamla; bu satır kendiliğinden güncellenir.")).captionStyle()
-            }
-            Text(L("Bilgisayarındaki codex aracı kendi ChatGPT girişinle kullanılır; uygulama giriş bilgini saklamaz."))
-                .captionStyle().fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var codexStatusText: String {
-        if let a = app.codexAccount {
-            return LF("Giriş yapıldı: %@", a.email ?? a.type) + (a.planType.map { " (\($0))" } ?? "")
-        }
-        return app.codexStatus.isEmpty ? L("Durum bilinmiyor") : app.codexStatus
-    }
-
-    private var terminal: some View {
-        @Bindable var app = app
-        return SettingsSection(title: L("Terminal")) {
-            HStack(alignment: .firstTextBaseline, spacing: Design.Space.s) {
-                CheckBox(isOn: $app.terminalIsolation, label: L("Marka yalıtımı"))
-                Text(L("Marka yalıtımı")).onTapGesture { app.terminalIsolation.toggle() }
-            }
-            Text(L("Açıkken her markanın terminali diğer markaların klasörlerini ve uygulama verisini okuyamaz, yazamaz. Değişiklik yeni açılan oturumlarda geçerlidir; açık oturumlar başladıkları ayarla sürer."))
+            Text(L("Rapor özetinde ve asistan sohbetinde, yalnız izin verdiğin markalarda kullanılır; o markanın içeriği Anthropic'e gider. Anahtar Keychain'de durur; kullanım başına ücretlidir."))
                 .captionStyle().fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -212,6 +206,92 @@ struct GeneralSettings: View {
                 keyStatus = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
         }
+    }
+
+    #if !MAS
+    // Codex bölümü ve ChatGPT giriş akışı: MAS derlemesinde yok (S2).
+    private var codex: some View {
+        SettingsSection(title: "Codex") {
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.m) {
+                Text(codexStatusText).lineLimit(2)
+                Spacer()
+                // Tek düğme: girişe göre "Giriş yap" ya da "Çıkış yap".
+                Button(app.codexAccount == nil ? L("Giriş yap") : L("Çıkış yap")) {
+                    if app.codexAccount == nil { login() } else { logout() }
+                }
+                .buttonStyle(.text)
+                .disabled(waitingLogin)
+            }
+            if waitingLogin {
+                Text(L("Tarayıcıda girişi tamamla; bu satır kendiliğinden güncellenir.")).captionStyle()
+            }
+            Text(L("Bilgisayarındaki codex aracı kendi ChatGPT girişinle kullanılır; uygulama giriş bilgini saklamaz."))
+                .captionStyle().fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: Bu Mac'teki model (E-11)
+
+    private var localModelSection: some View {
+        SettingsSection(title: L("Bu Mac'teki model")) {
+            if let saved = app.localModel {
+                ActionRow {
+                    Text(LF("Kayıtlı: %@ · %@", saved.model, saved.address)).lineLimit(1).truncationMode(.middle)
+                } actions: {
+                    Button(L("Bağlantıyı dene")) { testLocal(saved.address) }.buttonStyle(.text).disabled(localTesting)
+                    Button(L("Kaldır")) { app.clearLocalModel(); localStatus = "" }.buttonStyle(.text)
+                }
+            } else {
+                HStack(spacing: Design.Space.s) {
+                    InputField(title: L("Adres (http://127.0.0.1:11434)"), text: $localAddress)
+                    InputField(title: L("Model adı"), text: $localName)
+                }
+                HStack(spacing: Design.Space.s) {
+                    Button(L("Bağlantıyı dene")) { testLocal(localAddress) }
+                        .buttonStyle(.text).disabled(localAddress.isEmpty || localTesting)
+                    Spacer()
+                    Button(L("Kaydet")) { saveLocal() }
+                        .disabled(localAddress.isEmpty || localName.isEmpty)
+                }
+            }
+            if !localStatus.isEmpty { Text(localStatus).captionStyle().fixedSize(horizontal: false, vertical: true) }
+            Text(L("Bu Mac'te kendi başlattığın, OpenAI uyumlu bir model sunucusuna bağlanır; uygulama sunucuyu başlatmaz. Adres yalnız bu Mac olabilir. Marka izin kartında ayrı bir onay olarak görünür ve varsayılan olarak kapalıdır. İlk sürümde araç kullanmaz, öneri üretmez."))
+                .captionStyle().fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    func saveLocal() {
+        do {
+            try app.saveLocalModel(address: localAddress, model: localName)
+            localAddress = ""; localName = ""
+            localStatus = L("Kaydedildi.")
+        } catch {
+            localStatus = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    /// İçerik göndermeden sunucunun yanıt verip vermediğine bakar. Ekran çiziminde istek yapılmaz.
+    func testLocal(_ address: String) {
+        guard !isSnapshot else { return }
+        localTesting = true
+        localStatus = L("Deneniyor…")
+        Task {
+            defer { localTesting = false }
+            do {
+                try await LocalModelPreferences.testConnection(address: address)
+                localStatus = L("Sunucu yanıt verdi.")
+            } catch {
+                app.diagnostics.record(error, context: "ai.local.dene")
+                localStatus = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        }
+    }
+
+    private var codexStatusText: String {
+        if let a = app.codexAccount {
+            return LF("Giriş yapıldı: %@", a.email ?? a.type) + (a.planType.map { " (\($0))" } ?? "")
+        }
+        return app.codexStatus.isEmpty ? L("Durum bilinmiyor") : app.codexStatus
     }
 
     func logout() {
@@ -244,12 +324,14 @@ struct GeneralSettings: View {
             }
         }
     }
+    #endif
 }
 
 // MARK: - Veri
 
 struct DataSettings: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.isSnapshot) private var isSnapshot
     /// Yedek listesi her çizimde klasörden okunur (ekran çiziminde `onAppear` çalışmaz); yedek alınınca artar.
     @State private var backupsRevision = 0
     @State private var restoreTarget: BackupInfo?
@@ -309,21 +391,55 @@ struct DataSettings: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(backups) { b in
                     ActionRow {
-                        Text(b.manifest.createdAt, format: .dateTime.day().month().year().hour().minute())
+                        // Ekran çiziminde yedek az önce alınmış olur: saat/dakika koşudan koşuya değişir, yalnız gün gösterilir (H2-07).
+                        Text(b.manifest.createdAt, format: isSnapshot ? .dateTime.day().month().year() : .dateTime.day().month().year().hour().minute())
                         Text(reason(b.manifest.reason)).captionStyle()
                     } actions: {
                         Button(L("Geri yükle…")) { restoreTarget = b }.buttonStyle(.text)
                     }
                 }
             }
-            Text(L("Her gün ilk açılışta otomatik yedek alınır, son 14'ü saklanır. Geri yüklemeden önce mevcut veri ayrıca yedeklenir."))
+            Text(L("Her gün ilk açılışta (uygulama gece yarısını geçerek açık kalırsa gün değişince) otomatik yedek alınır, son 14'ü saklanır. Geri yüklemeden önce mevcut veri ayrıca yedeklenir."))
                 .captionStyle().fixedSize(horizontal: false, vertical: true)
+            // U-05: yedeklerin yeri açıkça söylenir; disk bozulmasına karşı başka yere yedek yolu.
+            Text(L("Bu yedekler aynı Mac'te, veri klasörünün içinde tutulur; disk bozulursa onlar da gider. Harici bir diske ya da başka bir klasöre kopya için \"Yedeği başka yere kaydet…\" kullan."))
+                .captionStyle().fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Design.Space.m) {
+                Button(L("Yedeği başka yere kaydet…")) { backupElsewhere() }.buttonStyle(.text)
+                Button(L("Başka yerdeki yedekten geri yükle…")) { pickExternalBackup() }.buttonStyle(.text)
+            }
+        }
+    }
+
+    /// Kullanıcının seçtiği klasöre (harici disk, iCloud Drive klasörü…) tam yedek alır ve Finder'da gösterir.
+    func backupElsewhere() {
+        guard let db = app.store?.database else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = L("Buraya yedekle")
+        guard panel.runModal() == .OK, let dir = panel.url else { return }
+        if let out = app.perform(context: "yedek.baska-yere", { try service.createBackup(database: db, reason: "manual", destination: dir) }) {
+            NSWorkspace.shared.activateFileViewerSelecting([out])
+        }
+    }
+
+    /// Başka yerdeki bir yedek klasörünü seçtirir; bütünlüğü doğrulanırsa geri yükleme onayı açılır.
+    func pickExternalBackup() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = L("Bu yedeği seç")
+        guard panel.runModal() == .OK, let dir = panel.url else { return }
+        if let manifest = app.perform(title: L("Yedek kullanılamaz"), context: "yedek.dis-dogrula", { try service.validate(backup: dir) }) {
+            restoreTarget = BackupInfo(url: dir, manifest: manifest)
         }
     }
 
     private var archived: some View {
         let _ = app.revision
-        let list = (try? app.store?.archivedBrands()) ?? []
+        let list = app.read(or: []) { try $0.archivedBrands() }
         return SettingsSection(title: L("Arşivlenmiş markalar")) {
             if list.isEmpty {
                 EmptyStateView(message: L("Arşivlenmiş marka yok."))
@@ -367,12 +483,17 @@ struct DataSettings: View {
     }
 
     func copyDiagnostics() {
+        #if !MAS
         let codex: DiagnosticSnapshot.CodexState = app.codexAccount != nil ? .girisli
             : (app.codexStatus == L("Codex kurulu, giriş yapılmamış") ? .girissiz : .bilinmiyor)
+        #else
+        let codex: DiagnosticSnapshot.CodexState = .bilinmiyor
+        #endif
         let snapshot = DiagnosticSnapshot.collect(store: app.store, log: app.diagnostics,
                                                   anthropicKeyPresent: app.hasAnthropicKey, codex: codex)
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(DiagnosticReport.render(snapshot, now: Date()), forType: .string)
+        NSPasteboard.general.setString(DiagnosticReport.render(snapshot, now: Date(), breadcrumbs: Breadcrumbs.shared.entries(),
+                                                                turns: TurnTraces.shared.entries()), forType: .string)
         copied = true
     }
 

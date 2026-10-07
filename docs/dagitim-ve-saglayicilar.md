@@ -1,20 +1,42 @@
 # Dağıtım, güncelleme, ödeme ve AI sağlayıcıları
 
-Kaynaklar 17 Eylül 2026'da kontrol edildi. Hukuki görüş değildir.
+Kaynaklar 17 Eylül 2026'da kontrol edildi (Mac App Store bölümü 4 Ekim 2026'da güncel karara göre yeniden yazıldı; yeni dış kaynak kontrolü yapılmadı). Hukuki görüş değildir.
+
+## 0. Güncel karar (2026-10-04)
+
+**Önce Mac App Store. Yayın aşaması henüz değil; geliştirme aşamasındayız.** Terminal 0.3.0'da kaldırıldığı için App Store'un önündeki en büyük ürün engeli kalktı ([plan](ai-calisma-alani-plani.md) §3). Bugün durum:
+
+- Paket **App Sandbox'sız** ve ad-hoc imzalıdır; Mac App Store'a gönderilebilir bir paket yoktur. Sandbox geçişi (marka klasörleri için kullanıcı seçimli bookmark, Codex'in çıkarılması, entitlements) [sandbox geçiş analizi](sandbox-gecis-analizi.md)nde planlandı; hiçbir adımı uygulanmadı ve sandbox'lı paket hiç denenmedi.
+- Hesap, imza, ödeme ve yayın adımları kurucu "sonra" dediği için son aşamadadır (plan F8, "şimdilik ertelendi"). Aşağıdaki doğrudan dağıtım bölümü, App Store'a gidilmezse ya da Codex'li bir sürüm de sunulacaksa **yedek yol** olarak korunur; güncel öneri değildir.
+- App Store inceleme sonucunu bilemeyiz; yönergelere uyum için gereken parçalar planda, onay garantisi yok.
 
 ## 1. Mac App Store ile doğrudan dağıtımın karşılaştırması
 
 | Konu | Mac App Store | Doğrudan dağıtım (Developer ID + notarization) |
 |---|---|---|
 | Sandbox | Zorunlu ("To distribute a macOS app through the Mac App Store, you must enable the App Sandbox capability") | İsteğe bağlı |
-| Terminal ve kullanıcının kurulu `claude`/`codex` araçları | Sandbox'lı süreç alt süreçlerine sandbox'ı devrediyor (Apple DTS, forums/thread/706390). `~/.local/bin` altındaki araçlar çalıştırılamıyor (forums/thread/654579). Review 2.5.2 kod çalıştırmayı kısıtlıyor. Ürünün terminal ve Codex bölümü pratikte çalışmaz | Çalışır (bu yapıda doğrulandı) |
+| Kullanıcının kurulu `codex` aracı (Codex App Server) | Sandbox'lı süreç alt süreçlerine sandbox'ı devrediyor (Apple DTS, forums/thread/706390). `~/.local/bin` altındaki araçlar çalıştırılamıyor (forums/thread/654579). Review 2.5.2 kod çalıştırmayı kısıtlıyor. İç içe `sandbox-exec` de çalışmıyor (`sandbox_apply: Operation not permitted`, 2026-09-18, sandbox'sız uygulamada ölçüldü). **Codex Mac App Store sürümünde olmayacak** | Çalışır (bu yapıda doğrulandı) |
 | Güncelleme | Yalnızca App Store (Review 2.4.5 vii) | Sparkle 2.x (MIT) ile |
 | Ödeme | Apple IAP, %15-30 komisyon | Paddle gibi Merchant of Record. Türkiye Paddle'ın desteklenmeyen ülkeler listesinde değil. Stripe'ın desteklediği işletme ülkeleri arasında Türkiye yok |
 | Hesap | Apple Developer Program (yıllık 99 USD) | Aynı program; Developer ID sertifikası için Account Holder olmak gerekir |
 
-**Öneri:** Doğrudan dağıtım. Developer ID ile imzala, notarize et, güncellemeleri Sparkle ile yap, ödemeyi Paddle'a bırak. App Store sürümü ancak terminal ve Codex'siz, sadeleştirilmiş bir ürün olarak düşünülebilir; bu beta için önerilmez.
+**Karar:** Önce Mac App Store (yayın aşaması henüz değil). Mac App Store sürümü Codex'siz, **Claude API anahtarlı** (BYOK) asistanla çıkar; ikinci sağlayıcı olarak cihaz üstü Apple Foundation Models planlıdır. Terminal artık ürünün parçası olmadığından eski "terminal ve Codex App Store'da çalışmaz" gerekçesi yalnız **Codex** için geçerlidir.
 
-## 2. Senin yapman gereken hesap ve yayın adımları
+**Mac App Store için gereksinimler (planlı, hiçbiri tamam değil):**
+- **App Sandbox zorunlu.** Entitlements taslağı ve göç adımları S1-S9: [sandbox-gecis-analizi.md](sandbox-gecis-analizi.md) (`app-sandbox`, `network.client`, `files.user-selected.read-write`, `files.bookmarks.app-scope`; Apple belgesinden **doğrulanamadı**, Xcode çıktısıyla karşılaştırılmalı). Marka klasörleri kullanıcı seçimli bookmark'a geçer; klasör izni olmadan çekirdek çalışmalıdır.
+- **Codex çıkar.** `CodexAppServer`, `BrandSandbox` profili ve `ChildEnvironment` yalnız `MAS` olmayan derlemede kalır (`#if !MAS`); sağlayıcı listesi yalnız Anthropic (sonra Foundation Models) olur. Sandbox'lı uygulamada kullanıcının kurulu ikilisi çalıştırılamadığı için bu bir tercih değil kısıttır.
+- **Madde 5.1.2(i) (üçüncü taraf yapay zekâya veri):** içerik Anthropic'e gitmeden önce açık, markaya özel izin ekranı ("ne gider, kime gider") ve App Privacy etiketi gerekir. Bugün marka başına izin var (varsayılan kapalı); metnin netleştirilmesi ve `PrivacyInfo.xcprivacy` yapılmadı ([plan §3 madde 5, §4.8](ai-calisma-alani-plani.md)). Kural 6 (içerik yalnız izin verilen sağlayıcıya gider) bu gereksinimle uyumlu tutulur; ama bilinen sınırlar belgesindeki mutlak "veri Mac'te kalır" cümleleri düzeltilmeden bu madde karşılanmış sayılmaz ([bilinen sınırlar](bilinen-sinirlar.md)).
+- **Güncelleme yalnız Mac App Store'dan** (Review 2.4.5 vii); Sparkle yok.
+- Xcode projesi gerekip gerekmediği (gönderim, ikon/asset kataloğu) **doğrulanamadı**; karar F8'de, gönderim öncesi küçük bir paketleme projesiyle verilecek (sandbox analizi §4).
+
+**Doğrudan dağıtımın artıları ve eksileri (yedek yol):**
+- Artılar: sandbox zorunlu değil, bu yüzden bugünkü marka klasörü ve dosya akışı değişmez; **Codex seçeneği korunur**; güncelleme Sparkle 2.x (MIT) ile; ödeme Paddle gibi Merchant of Record ile komisyonsuz IAP; inceleme beklemesi yok.
+- Eksileri: Developer ID imzası ve notarization gerekir (hesap yok, `scripts/release.sh` imzalı dalı hiç çalıştırılmadı); kullanıcıya Gatekeeper uyarısı ve kurulum sürtünmesi; Sparkle, EdDSA anahtarları ve ödeme altyapısını biz kurarız; Codex'in "onay politikası `never` + açık ağ" riski ([bilinen sınırlar](bilinen-sinirlar.md) §4) bu kanalda ürünün parçası olarak kalır; keşfedilebilirlik ve güven App Store'dan düşüktür.
+- İki sürüm tek kod tabanından çıkar (`MAS` derleme anahtarı): App Store sürümü Codex'siz, doğrudan sürüm Codex'li; aynı paket kimliğiyle birlikte yaşamaları (veri alanı, Keychain, tercihler ayrılır) için karar henüz verilmedi (sandbox analizi §5, madde 9). **Satış metninde Codex vaat edilmez.**
+
+## 2. Senin yapman gereken hesap ve yayın adımları (doğrudan dağıtım / beta paketi)
+
+Bu bölüm ad-hoc ya da Developer ID'li doğrudan dağıtım paketini anlatır; Mac App Store gönderimi (App Store Connect, `productbuild`, provisioning profile) bu betikte yoktur.
 
 Paketleme tek komuttur: `scripts/release.sh` (18 Eylül 2026, 0.2.0). Sürüm `Sources/MarkaCore/Version.swift`'ten,
 build numarası git commit sayısından gelir (`scripts/version.sh`); Info.plist ve dmg adı ondan türer.
@@ -48,7 +70,7 @@ Info.plist sürümü, `hdiutil verify`, dmg salt okunur bağlanıp içindeki uyg
    Kimlik, Apple ID ve parola betikte yoktur. `--sign` tek başına da çalışır ama notarize edilmemiş paket macOS 15'te yine
    engellenir; betik bunu uyarır.
 5. Beta dağıtımı: dmg dosyasını 5 katılımcıya doğrudan gönder; SHA-256 değeri betik çıktısının sonundadır.
-6. Sonraki adımlar (henüz yapılmadı):
+6. Sonraki adımlar (henüz yapılmadı; yalnız doğrudan dağıtım seçilirse gerekir):
    - Sparkle entegrasyonu ve EdDSA anahtarları
    - Paddle satıcı hesabı
    - Anthropic ticari kullanım koşullarının ve OpenAI'ın app-server'ın ticari kullanımına dair görüşünün teyidi
@@ -61,8 +83,8 @@ açılmaz. Evrensel (arm64 + x86_64) derleme Command Line Tools ile denenmedi.
 
 - Uygulama **Anthropic Messages API**'yi kullanıcının kendi API anahtarıyla çağırır. Anahtar Keychain'de, `WhenUnlockedThisDeviceOnly` erişim sınıfıyla saklanır.
 - Claude.ai tüketici aboneliği (Pro/Max) bağlanmaz. Anthropic'in belgesi: "Anthropic does not permit third-party developers to offer Claude.ai login into their own applications, or to route requests through Free, Pro, or Max plan credentials on behalf of their users." (code.claude.com/docs/en/legal-and-compliance)
-- Terminal bölmesinde kullanıcı kendi kurduğu, değiştirilmemiş `claude` CLI'ını kendi hesabıyla çalıştırır. Uygulama bu oturumun belirteçlerini okumaz ve saklamaz. Terminal bir "abonelik entegrasyonu" olarak sunulmaz.
-- Varsayılan model `claude-opus-5`; Sonnet 5 ve Haiku 4.5 de seçilebilir. Opus 5 isteklerinde `fallbacks: "default"` açıktır. Maliyet, yanıttaki token sayılarından liste fiyatıyla (2026-06-24 tablosu) **tahmini** olarak gösterilir.
+- Terminal 0.3.0'da kaldırıldı; uygulama kullanıcının `claude` CLI'ını çalıştırmaz ve abonelik belirteçlerine dokunmaz. Yalnız API anahtarı kullanılır.
+- Varsayılan model `claude-opus-5`; Sonnet 5 ve Haiku 4.5 de seçilebilir. Opus 5 isteklerinde `fallbacks: "default"` açıktır. Token sayıları ve liste fiyatı (2026-06-24 tablosu) kodda tutulur; Ayarlar'da fiyat/maliyet ekranı yoktur.
 - **Effort:** `output_config.effort` yalnızca destekleyen modellere gönderilir (Opus 5, Sonnet 5). Haiku 4.5 effort'u desteklemez ve alan gönderilirse 400 döner; bu modelde Ayarlar'daki effort seçimi yok sayılır ([Effort](https://platform.claude.com/docs/en/build-with-claude/effort) "Supported models"). Haiku 4.5'e `thinking` de gönderilmez (adaptive yalnızca Opus/Sonnet 5; [Models overview](https://platform.claude.com/docs/en/about-claude/models/overview)).
 - **Belgeyle karşılaştırma (2026-09-18):** gönderilen alanların tümü belgelenmiş: `cache_control` (üst düzey), `thinking: {type: "adaptive"}`, `output_config.effort`/`format` ([Messages API](https://platform.claude.com/docs/en/api/messages/create)); `fallbacks: "default"` + `anthropic-beta: server-side-fallback-2026-07-01` ([beta Messages API](https://platform.claude.com/docs/en/api/beta/messages/create)); araçlarda `eager_input_streaming: true` ([Fine-grained tool streaming](https://platform.claude.com/docs/en/agents-and-tools/tool-use/fine-grained-tool-streaming), tüm modeller); anahtar doğrulama `POST /v1/messages/count_tokens` ([Token counting](https://platform.claude.com/docs/en/build-with-claude/token-counting), ücretsiz). Yapılandırılmış çıktı Haiku 4.5'te de destekli ([Structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)); şemalarımız desteklenmeyen `minimum`/`maximum` kullanmıyor.
 - **Canlı doğrulama aracı:** `ANTHROPIC_API_KEY=sk-ant-… swift run MarkaDogrula anthropic [--model <kimlik>] [--max-tokens <n>]`. Anahtar yalnızca ortam değişkeninden okunur; geçici klasörde sentetik iki marka kurulur; anahtar doğrulama, akışlı sohbet, araç döngüsü (`kaynak_oku` → sonuç → yanıt), marka yalıtımı (B markasının kimliğiyle araç çağrısı reddedilmeli), bilgi derleme (B5; kaynaksız ve başka marka kaynaklı iddia reddedilmeli) ve rapor özeti (D4; her cümle madde referansı taşımalı) adımları `✓/✗`, süre, token ve tahmini maliyetle yazılır. Varsayılan model `claude-haiku-4-5-20251001`, `max_tokens` ≤ 4096; beklenen toplam birkaç sent. Çıkış kodları README "Doğrulama aracı" bölümünde.
@@ -70,7 +92,7 @@ açılmaz. Evrensel (arm64 + x86_64) derleme Command Line Tools ile denenmedi.
 
 ## 4. OpenAI Codex App Server
 
-- Kullanıcının kurulu `codex` aracı `codex app-server` olarak başlatılır (satır sonlu JSON-RPC). Giriş Codex'in kendi ChatGPT akışıyla yapılır ve belirteçler Codex'te kalır.
+- **Yalnız App Store dışı (doğrudan) yapıda; Mac App Store sürümünde olmayacak** (bkz. §1). Kullanıcının kurulu `codex` aracı `codex app-server` olarak başlatılır (satır sonlu JSON-RPC). Giriş Codex'in kendi ChatGPT akışıyla yapılır ve belirteçler Codex'te kalır.
 - **Doğrulandı (codex-cli 0.146.0, ChatGPT Plus hesabı, sentetik marka):**
   - `initialize` ve `account/read`
   - `model/list` (varsayılan model buradan seçilir; kullanıcı config'indeki model ChatGPT hesabında desteklenmeyebilir)
@@ -85,7 +107,7 @@ açılmaz. Evrensel (arm64 + x86_64) derleme Command Line Tools ile denenmedi.
 - **Sınırlar:**
   - OpenAI app-server'ı "experimental" olarak işaretliyor ve üretim için desteklemiyor.
   - Üçüncü taraf ticari bir uygulamanın kullanıcının ChatGPT planını kullanmasına dair açık bir izin bulunamadı. Ticari satıştan önce teyit alınmalı; yedek yol API anahtarı modu olabilir.
-  - Yalıtımın bedelleri: marka klasörü dışına yazma onayla değil kesin redle kapanır; komutların ağ erişimi app-server'ınkinden ayrılamaz (komutlar internete çıkabilir); sistem geçici klasörleri markalar arasında ortaktır; bilgisayarın marka klasörleri dışındaki kısmı okunabilir; iç içe sandbox kullanan araçlar (Codex CLI'nın varsayılan kipi, sandbox'ı açık Claude Code) marka terminalinde komut çalıştıramaz. Ayrıntı README "Bilinen sınırlar".
+  - Yalıtımın bedelleri: marka klasörü dışına yazma onayla değil kesin redle kapanır; komutların ağ erişimi app-server'ınkinden ayrılamaz (komutlar internete çıkabilir); sistem geçici klasörleri markalar arasında ortaktır; bilgisayarın marka klasörleri dışındaki kısmı okunabilir. Ayrıntı [bilinen sınırlar](bilinen-sinirlar.md).
   - Kullanıcının `~/.codex/config.toml` ayarları uygulamanın Codex süreçlerine uygulanmaz (dosyadaki proje yolları başka markaların adlarını taşır, bu yüzden bağlanmaz). Giriş dosyası sembolik bağla paylaşılır; belirteç yenilemesinin bağ üzerinden yazıldığı doğrulanmadı.
   - Markada Codex izni yine varsayılan olarak kapalıdır.
   - 0.1.0 test oturumları `~/.codex/sessions/2026/09/17/` altında Codex geçmişinde görünür; 0.2.0'dan itibaren uygulamanın Codex kayıtları `<veri alanı>/Codex/` altındadır.

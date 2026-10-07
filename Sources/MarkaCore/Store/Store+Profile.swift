@@ -37,4 +37,15 @@ extension Store {
                       action: clean.isEmpty ? "delete" : "set", before: before, after: clean.isEmpty ? nil : clean)
         }
     }
+
+    /// Her bölümün son yazılma zamanı (yalnız yazılmış bölümler).
+    public func profileUpdatedAt(brandId: String) throws -> [ProfileSection: Date] {
+        try read { db in
+            var out: [ProfileSection: Date] = [:]
+            for r in try Row.fetchAll(db, sql: "SELECT section, updatedAt FROM brandProfile WHERE brandId = ?", arguments: [brandId]) {
+                if let key: String = r["section"], let section = ProfileSection(rawValue: key), let at: Date = r["updatedAt"] { out[section] = at }
+            }
+            return out
+        }
+    }
 }
